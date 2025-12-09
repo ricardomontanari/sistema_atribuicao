@@ -98,7 +98,7 @@ def exibir_confirmacao(title, message, icon="question", option_ok="Confirmar", o
     return msg_box.get()
 
 # ####################################################################
-# --- CLASSE 1: JANELA DE LOGIN (Renomeada para LoginWindow) ---
+# --- CLASSE 1: JANELA DE LOGIN (APP INICIAL) ---
 # ####################################################################
 
 class LoginWindow(ctk.CTk):
@@ -214,9 +214,9 @@ class MainWindow(ctk.CTk):
         # --- Configuração da Janela Principal ---
         self.title(f"Sistema de Automação ({utils.VERSAO_SISTEMA})") 
         
-        # Centraliza a janela (650x600)
+        # Aumentamos um pouco a altura para acomodar os novos campos (650x700)
         window_width = 650
-        window_height = 600
+        window_height = 700
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         
@@ -281,14 +281,14 @@ class MainWindow(ctk.CTk):
     def setup_automacao_tab(self):
         tab = self.tabview.tab("Automação")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(3, weight=1) 
+        tab.rowconfigure(5, weight=1) # Ajustado o peso para acomodar mais linhas
 
         # Controles
         ctrl_frame = ctk.CTkFrame(tab)
         ctrl_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         ctrl_frame.columnconfigure((1, 3), weight=1) 
         
-        # Linha 0
+        # --- LINHA 0: Cidade 1 e Delay ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 1 (Principal):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_1 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_1.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
@@ -298,7 +298,7 @@ class MainWindow(ctk.CTk):
         self.delay_combobox.set("0.5")
         self.delay_combobox.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
-        # Linha 1
+        # --- LINHA 1: Cidade 2 e Status ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 2 (Opcional):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_2 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_2.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
@@ -309,7 +309,7 @@ class MainWindow(ctk.CTk):
         self.status_color.trace_add("write", lambda *args: self.status_lbl.configure(fg_color=self.status_color.get()))
         self.status_color.set("gray") 
 
-        # Linha 2
+        # --- LINHA 2: Cidade 3 e Backlog ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 3 (Opcional):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_3 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_3.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
@@ -318,6 +318,16 @@ class MainWindow(ctk.CTk):
         self.backlog_combobox = ctk.CTkComboBox(ctrl_frame, values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "14", "18", "26"], width=80)
         self.backlog_combobox.set("1") 
         self.backlog_combobox.grid(row=2, column=3, padx=5, pady=5, sticky="ew")
+
+        # --- LINHA 3: Cidade 4 (NOVO) ---
+        ctk.CTkLabel(ctrl_frame, text="Cidade 4 (Opcional):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        self.cidades_combobox_4 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
+        self.cidades_combobox_4.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
+        # --- LINHA 4: Cidade 5 (NOVO) ---
+        ctk.CTkLabel(ctrl_frame, text="Cidade 5 (Opcional):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+        self.cidades_combobox_5 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
+        self.cidades_combobox_5.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
 
         # Botões
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
@@ -343,8 +353,6 @@ class MainWindow(ctk.CTk):
 
         # Log
         ctk.CTkLabel(tab, text="Log de Execução:", anchor="w").grid(row=3, column=0, padx=10, pady=(10, 0), sticky="nw")
-        
-        # MUDANÇA: Log é ReadOnlyTextbox
         self.log_textbox = ReadOnlyTextbox(tab) 
         self.log_textbox.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
@@ -362,7 +370,6 @@ class MainWindow(ctk.CTk):
         ctk.CTkButton(add_frame, text="➕ Adicionar", width=100, command=self.add_cidade_ui).pack(side="right", padx=10, pady=10)
 
         # List
-        # MUDANÇA: Lista é ReadOnlyTextbox
         self.lista_cidades_txt = ReadOnlyTextbox(tab) 
         self.lista_cidades_txt.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
 
@@ -459,35 +466,53 @@ class MainWindow(ctk.CTk):
             exibir_popup("Exclusão", msg, "check" if ok else "cancel")
 
     def atualizar_listas_exclusivas(self, choice=None):
+        # Captura os valores de todos os 5 campos
         sel1 = self.cidades_combobox_1.get()
         sel2 = self.cidades_combobox_2.get()
         sel3 = self.cidades_combobox_3.get()
-        ignorar = ["NENHUM FILTRO", "SELECIONE", ""]
+        sel4 = self.cidades_combobox_4.get()
+        sel5 = self.cidades_combobox_5.get()
+        
+        ignorar = ["NENHUM FILTRO", "SELECIONE", "", None]
 
-        def get_opcoes(excluir):
-            excluir_limpa = [x for x in excluir if x not in ignorar]
+        def get_opcoes(excluir_list):
+            # Filtra a lista de exclusão para não considerar valores vazios/padrão
+            excluir_limpa = [x for x in excluir_list if x not in ignorar]
+            # Retorna lista de cidades que NÃO estão na lista de exclusão
             return ["NENHUM FILTRO"] + [c for c in self.todas_cidades if c not in excluir_limpa]
 
-        self.cidades_combobox_1.configure(values=get_opcoes([sel2, sel3]))
+        # Atualiza cada combobox excluindo as seleções dos OUTROS 4
+        self.cidades_combobox_1.configure(values=get_opcoes([sel2, sel3, sel4, sel5]))
         self.cidades_combobox_1.set(sel1)
 
-        self.cidades_combobox_2.configure(values=get_opcoes([sel1, sel3]))
+        self.cidades_combobox_2.configure(values=get_opcoes([sel1, sel3, sel4, sel5]))
         self.cidades_combobox_2.set(sel2)
 
-        self.cidades_combobox_3.configure(values=get_opcoes([sel1, sel2]))
+        self.cidades_combobox_3.configure(values=get_opcoes([sel1, sel2, sel4, sel5]))
         self.cidades_combobox_3.set(sel3)
+
+        self.cidades_combobox_4.configure(values=get_opcoes([sel1, sel2, sel3, sel5]))
+        self.cidades_combobox_4.set(sel4)
+
+        self.cidades_combobox_5.configure(values=get_opcoes([sel1, sel2, sel3, sel4]))
+        self.cidades_combobox_5.set(sel5)
 
     def carregar_cidades_db(self):
         nomes = buscar_nomes_cidades()
         self.todas_cidades = nomes 
         opcoes_padrao = ["NENHUM FILTRO"] + nomes
 
+        # Configura as 5 comboboxes
         self.cidades_combobox_1.configure(values=opcoes_padrao)
         self.cidades_combobox_1.set("NENHUM FILTRO")
         self.cidades_combobox_2.configure(values=opcoes_padrao)
         self.cidades_combobox_2.set("NENHUM FILTRO")
         self.cidades_combobox_3.configure(values=opcoes_padrao)
         self.cidades_combobox_3.set("NENHUM FILTRO")
+        self.cidades_combobox_4.configure(values=opcoes_padrao)
+        self.cidades_combobox_4.set("NENHUM FILTRO")
+        self.cidades_combobox_5.configure(values=opcoes_padrao)
+        self.cidades_combobox_5.set("NENHUM FILTRO")
         
         lista = listar_cidades()
         self.lista_cidades_txt.delete("0.0", "end")
@@ -506,9 +531,12 @@ class MainWindow(ctk.CTk):
                  exibir_popup(title="Planilha Não Detectada", message=f"⚠️ A automação requer que a planilha '{utils.NOME_ARQUIVO_ALVO}' esteja aberta.\n\nPor favor, abra o arquivo Excel e tente novamente.", icon="cancel")
                  return
 
+            # Coleta as 5 cidades
             c1 = self.cidades_combobox_1.get()
             c2 = self.cidades_combobox_2.get()
             c3 = self.cidades_combobox_3.get()
+            c4 = self.cidades_combobox_4.get()
+            c5 = self.cidades_combobox_5.get()
             
             backlog_val = self.backlog_combobox.get()
             delay_str = self.delay_combobox.get()
@@ -525,6 +553,8 @@ class MainWindow(ctk.CTk):
             if limpar_valor(c1): cidades_validas.append(limpar_valor(c1))
             if limpar_valor(c2): cidades_validas.append(limpar_valor(c2))
             if limpar_valor(c3): cidades_validas.append(limpar_valor(c3))
+            if limpar_valor(c4): cidades_validas.append(limpar_valor(c4))
+            if limpar_valor(c5): cidades_validas.append(limpar_valor(c5))
             
             cidade_final = ",".join(cidades_validas)
             msg_filtro = f"para: {cidade_final}"
@@ -537,7 +567,6 @@ class MainWindow(ctk.CTk):
             self._safe_update_gui(status="Rodando", total_ciclos=0, ciclo_atual=0)
             self._safe_configure_buttons("disabled", "disabled")
             
-            # Formatação segura sem depender de utils.log_time
             timestamp = time.strftime("%H:%M:%S")
             self.log_textbox.insert("end", f"[{timestamp}] Iniciando {msg_filtro} | Backlog: {backlog_val} (Delay: {delay}s)...\n")
             
