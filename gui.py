@@ -23,6 +23,25 @@ from db_manager import (
 # Arquivo para salvar a preferência do usuário (localmente)
 CONFIG_LOGIN_FILE = "login_config.json"
 
+# --- CONSTANTES DE ESTILO (PADRONIZAÇÃO) ---
+BTN_HEIGHT_DEFAULT = 35
+BTN_HEIGHT_MAIN = 40
+
+COLOR_SUCCESS = "green"       # Iniciar, Adicionar, Salvar
+COLOR_SUCCESS_HOVER = "darkgreen"
+
+COLOR_DANGER = "red"          # Excluir, Parar, Remover
+COLOR_DANGER_HOVER = "darkred"
+
+# Azul Real (Royal Blue) para Continuar
+COLOR_WARNING = "#1565C0"      # Continuar
+COLOR_WARNING_HOVER = "#0D47A1"
+
+# NOVA COR: Teal (Verde-petróleo) para Excel/Arquivo
+# Distinto do Azul e do Verde padrão
+COLOR_NEUTRAL = "#00796B"     # Excel
+COLOR_NEUTRAL_HOVER = "#004D40"
+
 # ####################################################################
 # --- COMPONENTE PERSONALIZADO: TEXTBOX SOMENTE LEITURA ---
 # ####################################################################
@@ -34,21 +53,16 @@ class ReadOnlyTextbox(ctk.CTkTextbox):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Inicia bloqueada para o usuário
         self.configure(state="disabled")
 
     def insert(self, index, text, tags=None):
-        # Destrava momentaneamente para o sistema escrever
         self.configure(state="normal")
         super().insert(index, text, tags)
-        # Trava novamente
         self.configure(state="disabled")
 
     def delete(self, index1, index2=None):
-        # Destrava momentaneamente para o sistema limpar
         self.configure(state="normal")
         super().delete(index1, index2)
-        # Trava novamente
         self.configure(state="disabled")
 
 # ####################################################################
@@ -56,45 +70,24 @@ class ReadOnlyTextbox(ctk.CTkTextbox):
 # ####################################################################
 
 def _aplicar_estilo_padrao(msg_box):
-    """
-    Aplica as correções visuais e de foco comuns a todos os pop-ups.
-    """
     try:
-        # Padrão estável: Adiciona 25px de espaço em ambos os lados do ícone.
         msg_box.icon_label.grid_configure(padx=(25, 25))
     except Exception:
         pass 
-    
-    # Força o foco na janela para capturar teclado imediatamente
     msg_box.after(10, lambda: msg_box.focus_force())
 
-
 def exibir_popup(title, message, icon="info"):
-    """
-    Pop-up simples (apenas botão OK). Fecha com Enter.
-    """
     msg_box = CTkMessagebox(title=title, message=message, icon=icon)
     _aplicar_estilo_padrao(msg_box)
-    
-    # Bind: Enter fecha
     msg_box.bind("<Return>", lambda event: msg_box.button_event("OK"))
-    
     return msg_box.get()
 
-
 def exibir_confirmacao(title, message, icon="question", option_ok="Confirmar", option_cancel="Cancelar"):
-    """
-    Pop-up de decisão (Dois botões). Enter -> Confirma, Esc -> Cancela.
-    """
     msg_box = CTkMessagebox(title=title, message=message, icon=icon, 
                             option_1=option_cancel, option_2=option_ok)
-    
     _aplicar_estilo_padrao(msg_box)
-
-    # Bind: Enter confirma, Esc cancela
     msg_box.bind("<Return>", lambda event: msg_box.button_event(option_ok))
     msg_box.bind("<Escape>", lambda event: msg_box.button_event(option_cancel))
-    
     return msg_box.get()
 
 # ####################################################################
@@ -102,72 +95,51 @@ def exibir_confirmacao(title, message, icon="question", option_ok="Confirmar", o
 # ####################################################################
 
 class LoginWindow(ctk.CTk):
-    """
-    Janela de Login. É a primeira classe instanciada pelo main.py.
-    """
     def __init__(self):
         super().__init__()
-        
-        # Inicializa o Banco de Dados
         setup_database() 
         
-        # --- Configuração da Janela de Login ---
         self.title("Login") 
-        
-        # Centraliza a janela (350x380)
         window_width = 350
         window_height = 380
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
         x = int((screen_width - window_width) / 2)
         y = int((screen_height - window_height) / 2)
-        
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.resizable(False, False)
-        
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1) 
 
-        # Frame principal
         login_frame = ctk.CTkFrame(self)
         login_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         login_frame.grid_columnconfigure(0, weight=1)
 
-        # Título
         ctk.CTkLabel(login_frame, text="Acesso ao Atribuidor", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, pady=(30, 20), padx=20)
 
-        # Campos de Entrada
-        self.username_entry = ctk.CTkEntry(login_frame, placeholder_text="Usuário", width=200)
+        self.username_entry = ctk.CTkEntry(login_frame, placeholder_text="Usuário", width=200, height=35)
         self.username_entry.grid(row=1, column=0, pady=10, padx=20)
 
-        self.password_entry = ctk.CTkEntry(login_frame, placeholder_text="Senha", show="*", width=200)
+        self.password_entry = ctk.CTkEntry(login_frame, placeholder_text="Senha", show="*", width=200, height=35)
         self.password_entry.grid(row=2, column=0, pady=10, padx=20)
 
-        # Checkbox "Lembrar usuário"
         self.lembrar_var = ctk.BooleanVar(value=False)
         self.lembrar_checkbox = ctk.CTkCheckBox(
-            login_frame, 
-            text="Lembrar usuário", 
-            variable=self.lembrar_var,
-            font=ctk.CTkFont(size=11), 
-            checkbox_width=14,   
-            checkbox_height=14,  
-            border_width=1       
+            login_frame, text="Lembrar usuário", variable=self.lembrar_var,
+            font=ctk.CTkFont(size=11), checkbox_width=14, checkbox_height=14, border_width=1       
         )
         self.lembrar_checkbox.grid(row=3, column=0, pady=(5, 10), padx=20)
 
-        # Botão de Login
-        self.login_button = ctk.CTkButton(login_frame, text="Acessar", command=self.attempt_login, width=200, fg_color="#3B8ED0", hover_color="#36719F")
+        # Botão de Login (Texto Branco - Cor Neutral/Teal)
+        self.login_button = ctk.CTkButton(
+            login_frame, text="Acessar", command=self.attempt_login, width=200, 
+            height=BTN_HEIGHT_MAIN, text_color="white",
+            fg_color=COLOR_NEUTRAL, hover_color=COLOR_NEUTRAL_HOVER
+        )
         self.login_button.grid(row=4, column=0, pady=20, padx=20)
         
-        # Atalho Enter
         self.bind('<Return>', lambda event: self.attempt_login())
-
-        # Carregar usuário salvo
         self.carregar_usuario_salvo()
-        
-        # Foco inteligente
         self.after(100, lambda: self.password_entry.focus_set() if self.username_entry.get() else self.username_entry.focus_set())
         
     def carregar_usuario_salvo(self):
@@ -190,16 +162,12 @@ class LoginWindow(ctk.CTk):
     def attempt_login(self):
         user = self.username_entry.get()
         password = self.password_entry.get()
-        
         if verificar_credenciais(user, password):
             self.salvar_preferencia_usuario(user)
-            self.withdraw() # Esconde login
-            
-            # Inicia a aplicação principal
+            self.withdraw()
             main_app = MainWindow()
             main_app.mainloop()
-            
-            self.destroy() # Encerra login após fechar app principal
+            self.destroy()
         else:
             exibir_popup(title="Erro de Acesso", message="Usuário ou Senha inválidos.", icon="cancel")
 
@@ -210,25 +178,17 @@ class LoginWindow(ctk.CTk):
 class MainWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
-
-        # --- Configuração da Janela Principal ---
         self.title(f"Sistema de Automação ({utils.VERSAO_SISTEMA})") 
-        
-        # Aumentamos um pouco a altura para acomodar os novos campos (650x700)
         window_width = 650
         window_height = 700
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
         x = int((screen_width - window_width) / 2)
         y = int((screen_height - window_height) / 2)
-        
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- Variáveis de Estado ---
         self.status_text = ctk.StringVar(value="PRONTO")
         self.status_color = ctk.StringVar(value="green")
         self.progresso_atual = ctk.DoubleVar(value=0)
@@ -237,7 +197,6 @@ class MainWindow(ctk.CTk):
         self.todas_cidades = []
         self.monitor_thread_started = False
 
-        # --- Abas ---
         self.tabview = ctk.CTkTabview(self)
         self.tabview.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         self.tabview.add("Automação")
@@ -247,10 +206,8 @@ class MainWindow(ctk.CTk):
         self.setup_automacao_tab()
         self.setup_cadastro_tab()
         self.setup_usuarios_tab() 
-        
         self.carregar_cidades_db()
 
-    # --- MÉTODOS THREAD-SAFE ---
     def _safe_update_gui(self, status=None, total_ciclos=None, ciclo_atual=None):
         def update():
             if status:
@@ -277,21 +234,16 @@ class MainWindow(ctk.CTk):
         self.iniciar_btn.configure(state=i_state)
         self.continuar_btn.configure(state=c_state)
 
-    # --- SETUP ABAS ---
     def setup_automacao_tab(self):
         tab = self.tabview.tab("Automação")
         tab.columnconfigure(0, weight=1)
-        
-        # MUDANÇA PRINCIPAL AQUI:
-        # Definimos que a LINHA 4 (onde está o Log) é a que deve expandir (weight=1)
-        tab.rowconfigure(4, weight=1) 
+        tab.rowconfigure(4, weight=1) # Log expande
 
-        # Controles
         ctrl_frame = ctk.CTkFrame(tab)
         ctrl_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         ctrl_frame.columnconfigure((1, 3), weight=1) 
         
-        # --- LINHA 0: Cidade 1 e Delay ---
+        # Campos de Cidades (1 a 5)
         ctk.CTkLabel(ctrl_frame, text="Cidade 1 (Principal):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_1 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_1.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
@@ -301,7 +253,6 @@ class MainWindow(ctk.CTk):
         self.delay_combobox.set("0.5")
         self.delay_combobox.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
-        # --- LINHA 1: Cidade 2 e Status ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 2 (Opcional):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_2 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_2.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
@@ -312,7 +263,6 @@ class MainWindow(ctk.CTk):
         self.status_color.trace_add("write", lambda *args: self.status_lbl.configure(fg_color=self.status_color.get()))
         self.status_color.set("gray") 
 
-        # --- LINHA 2: Cidade 3 e Backlog ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 3 (Opcional):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_3 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_3.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
@@ -322,27 +272,40 @@ class MainWindow(ctk.CTk):
         self.backlog_combobox.set("1") 
         self.backlog_combobox.grid(row=2, column=3, padx=5, pady=5, sticky="ew")
 
-        # --- LINHA 3: Cidade 4 (NOVO) ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 4 (Opcional):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_4 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_4.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-        # --- LINHA 4: Cidade 5 (NOVO) ---
         ctk.CTkLabel(ctrl_frame, text="Cidade 5 (Opcional):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_5 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_5.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
 
-        # Botões
+        # --- BOTÕES DE AÇÃO PRINCIPAL ---
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
         btn_frame.grid(row=1, column=0, padx=10, pady=0, sticky="ew")
         
-        self.iniciar_btn = ctk.CTkButton(btn_frame, text="▶ INICIAR", command=self.iniciar_automacao, fg_color="green", hover_color="darkgreen")
+        # INICIAR: Texto Branco
+        self.iniciar_btn = ctk.CTkButton(
+            btn_frame, text="INICIAR", command=self.iniciar_automacao, 
+            height=BTN_HEIGHT_MAIN, text_color="white",
+            fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER
+        )
         self.iniciar_btn.pack(side="left", fill="x", expand=True, padx=5)
         
-        self.continuar_btn = ctk.CTkButton(btn_frame, text="⏯ CONTINUAR", command=self.continuar_automacao, state="disabled", fg_color="orange", text_color="black", hover_color="#FFB74D")
+        # CONTINUAR: Texto Branco (Azul Real)
+        self.continuar_btn = ctk.CTkButton(
+            btn_frame, text="CONTINUAR", command=self.continuar_automacao, state="disabled", 
+            height=BTN_HEIGHT_MAIN, text_color="white",
+            fg_color=COLOR_WARNING, hover_color=COLOR_WARNING_HOVER
+        )
         self.continuar_btn.pack(side="left", fill="x", expand=True, padx=5)
 
-        self.abrir_btn = ctk.CTkButton(btn_frame, text="📂 Excel", command=self.abrir_excel, width=80, fg_color="#3B8ED0", hover_color="#36719F")
+        # EXCEL: Texto Branco (Agora TEAL)
+        self.abrir_btn = ctk.CTkButton(
+            btn_frame, text="Excel", command=self.abrir_excel, width=80, 
+            height=BTN_HEIGHT_DEFAULT, text_color="white",
+            fg_color=COLOR_NEUTRAL, hover_color=COLOR_NEUTRAL_HOVER
+        )
         self.abrir_btn.pack(side="right", padx=5)
 
         # Progresso
@@ -356,9 +319,7 @@ class MainWindow(ctk.CTk):
 
         # Log
         ctk.CTkLabel(tab, text="Log de Execução:", anchor="w").grid(row=3, column=0, padx=10, pady=(10, 0), sticky="nw")
-        
         self.log_textbox = ReadOnlyTextbox(tab) 
-        # Garante que o grid do log ocupe todo o espaço disponível
         self.log_textbox.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
     def setup_cadastro_tab(self):
@@ -366,31 +327,42 @@ class MainWindow(ctk.CTk):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1) 
 
-        # Add
+        # Add Frame
         add_frame = ctk.CTkFrame(tab)
         add_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        self.nova_cidade_entry = ctk.CTkEntry(add_frame, placeholder_text="Nome da Cidade")
+        self.nova_cidade_entry = ctk.CTkEntry(add_frame, placeholder_text="Nome da Cidade", height=35)
         self.nova_cidade_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
         self.nova_cidade_entry.bind('<Return>', lambda event: self.add_cidade_ui())
-        ctk.CTkButton(add_frame, text="➕ Adicionar", width=100, command=self.add_cidade_ui).pack(side="right", padx=10, pady=10)
+        
+        # ADICIONAR: Texto Branco
+        ctk.CTkButton(
+            add_frame, text="Adicionar", width=100, height=BTN_HEIGHT_DEFAULT,
+            fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
+            text_color="white",
+            command=self.add_cidade_ui
+        ).pack(side="right", padx=10, pady=10)
 
         # List
         self.lista_cidades_txt = ReadOnlyTextbox(tab) 
         self.lista_cidades_txt.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
 
-        # Del
+        # Del Frame
         del_frame = ctk.CTkFrame(tab)
         del_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
-        self.del_id_entry = ctk.CTkEntry(del_frame, placeholder_text="ID para Excluir")
+        self.del_id_entry = ctk.CTkEntry(del_frame, placeholder_text="ID para Excluir", height=35)
         self.del_id_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
         self.del_id_entry.bind('<Return>', lambda event: self.del_cidade_ui())
-        ctk.CTkButton(del_frame, text="🗑 Excluir", width=100, fg_color="red", hover_color="darkred", command=self.del_cidade_ui).pack(side="right", padx=10, pady=10)
+        
+        # EXCLUIR: Texto Branco
+        ctk.CTkButton(
+            del_frame, text="Excluir", width=100, height=BTN_HEIGHT_DEFAULT,
+            fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
+            text_color="white",
+            command=self.del_cidade_ui
+        ).pack(side="right", padx=10, pady=10)
 
     def setup_usuarios_tab(self):
-        """Aba de usuários redesenhada com lista e exclusão."""
         tab = self.tabview.tab("Usuários")
-        
-        # Divide a aba em duas colunas: Cadastro (esq) e Lista (dir)
         tab.columnconfigure(0, weight=1)
         tab.columnconfigure(1, weight=1)
         tab.rowconfigure(0, weight=1)
@@ -401,13 +373,19 @@ class MainWindow(ctk.CTk):
         
         ctk.CTkLabel(left_frame, text="Novo Operador", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 10))
         
-        self.new_username_entry = ctk.CTkEntry(left_frame, placeholder_text="Usuário (Ex: operador)")
+        self.new_username_entry = ctk.CTkEntry(left_frame, placeholder_text="Usuário (Ex: operador)", height=35)
         self.new_username_entry.pack(pady=10, padx=20, fill="x")
 
-        self.new_password_entry = ctk.CTkEntry(left_frame, show="*", placeholder_text="Senha")
+        self.new_password_entry = ctk.CTkEntry(left_frame, show="*", placeholder_text="Senha", height=35)
         self.new_password_entry.pack(pady=10, padx=20, fill="x")
 
-        ctk.CTkButton(left_frame, text="💾 Cadastrar", command=self.add_usuario_ui, fg_color="green", hover_color="darkgreen").pack(pady=20, padx=20, fill="x")
+        # CADASTRAR: Texto Branco
+        ctk.CTkButton(
+            left_frame, text="Cadastrar", height=BTN_HEIGHT_DEFAULT,
+            fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
+            text_color="white",
+            command=self.add_usuario_ui
+        ).pack(pady=20, padx=20, fill="x")
         
         # --- COLUNA DIREITA: LISTAGEM ---
         right_frame = ctk.CTkFrame(tab)
@@ -417,7 +395,6 @@ class MainWindow(ctk.CTk):
 
         ctk.CTkLabel(right_frame, text="Usuários Ativos", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, pady=(20, 10))
 
-        # Lista de usuários (usando ReadOnlyTextbox)
         self.lista_usuarios_txt = ReadOnlyTextbox(right_frame)
         self.lista_usuarios_txt.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
         
@@ -425,18 +402,22 @@ class MainWindow(ctk.CTk):
         del_user_frame = ctk.CTkFrame(right_frame, fg_color="transparent")
         del_user_frame.grid(row=2, column=0, pady=10, padx=10, sticky="ew")
         
-        self.del_user_entry = ctk.CTkEntry(del_user_frame, placeholder_text="Digite o usuário para excluir")
+        self.del_user_entry = ctk.CTkEntry(del_user_frame, placeholder_text="Digite o usuário para excluir", height=35)
         self.del_user_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         
-        ctk.CTkButton(del_user_frame, text="🗑 Remover", width=80, fg_color="red", hover_color="darkred", command=self.del_usuario_ui).pack(side="right")
+        # REMOVER: Texto Branco
+        ctk.CTkButton(
+            del_user_frame, text="Remover", width=80, height=BTN_HEIGHT_DEFAULT,
+            fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
+            text_color="white",
+            command=self.del_usuario_ui
+        ).pack(side="right")
         
-        # Carrega a lista inicial
         self.carregar_lista_usuarios()
 
     # --- LÓGICA DE NEGÓCIO DA GUI ---
 
     def carregar_lista_usuarios(self):
-        """Busca usuários no banco e atualiza a tela."""
         users = listar_usuarios()
         self.lista_usuarios_txt.delete("0.0", "end")
         if not users:
@@ -449,12 +430,11 @@ class MainWindow(ctk.CTk):
     def add_usuario_ui(self):
         user = self.new_username_entry.get()
         pwd = self.new_password_entry.get()
-        
         msg, ok = adicionar_usuario(user, pwd)
         if ok:
             self.new_username_entry.delete(0, "end")
             self.new_password_entry.delete(0, "end")
-            self.carregar_lista_usuarios() # Atualiza lista
+            self.carregar_lista_usuarios()
         exibir_popup(title="Cadastro", message=msg, icon="check" if ok else "cancel")
 
     def del_usuario_ui(self):
@@ -462,7 +442,6 @@ class MainWindow(ctk.CTk):
         if not user_to_del:
             exibir_popup("Aviso", "Digite o nome do usuário para excluir.", "warning")
             return
-
         if exibir_confirmacao("Confirmar Exclusão", f"Tem certeza que deseja remover o usuário '{user_to_del}'?", "warning", option_ok="Excluir") == "Excluir":
             msg, ok = excluir_usuario(user_to_del)
             if ok:
@@ -471,34 +450,23 @@ class MainWindow(ctk.CTk):
             exibir_popup("Exclusão", msg, "check" if ok else "cancel")
 
     def atualizar_listas_exclusivas(self, choice=None):
-        # Captura os valores de todos os 5 campos
         sel1 = self.cidades_combobox_1.get()
         sel2 = self.cidades_combobox_2.get()
         sel3 = self.cidades_combobox_3.get()
         sel4 = self.cidades_combobox_4.get()
         sel5 = self.cidades_combobox_5.get()
-        
         ignorar = ["NENHUM FILTRO", "SELECIONE", "", None]
-
         def get_opcoes(excluir_list):
-            # Filtra a lista de exclusão para não considerar valores vazios/padrão
             excluir_limpa = [x for x in excluir_list if x not in ignorar]
-            # Retorna lista de cidades que NÃO estão na lista de exclusão
             return ["NENHUM FILTRO"] + [c for c in self.todas_cidades if c not in excluir_limpa]
-
-        # Atualiza cada combobox excluindo as seleções dos OUTROS 4
         self.cidades_combobox_1.configure(values=get_opcoes([sel2, sel3, sel4, sel5]))
         self.cidades_combobox_1.set(sel1)
-
         self.cidades_combobox_2.configure(values=get_opcoes([sel1, sel3, sel4, sel5]))
         self.cidades_combobox_2.set(sel2)
-
         self.cidades_combobox_3.configure(values=get_opcoes([sel1, sel2, sel4, sel5]))
         self.cidades_combobox_3.set(sel3)
-
         self.cidades_combobox_4.configure(values=get_opcoes([sel1, sel2, sel3, sel5]))
         self.cidades_combobox_4.set(sel4)
-
         self.cidades_combobox_5.configure(values=get_opcoes([sel1, sel2, sel3, sel4]))
         self.cidades_combobox_5.set(sel5)
 
@@ -506,8 +474,6 @@ class MainWindow(ctk.CTk):
         nomes = buscar_nomes_cidades()
         self.todas_cidades = nomes 
         opcoes_padrao = ["NENHUM FILTRO"] + nomes
-
-        # Configura as 5 comboboxes
         self.cidades_combobox_1.configure(values=opcoes_padrao)
         self.cidades_combobox_1.set("NENHUM FILTRO")
         self.cidades_combobox_2.configure(values=opcoes_padrao)
@@ -518,7 +484,6 @@ class MainWindow(ctk.CTk):
         self.cidades_combobox_4.set("NENHUM FILTRO")
         self.cidades_combobox_5.configure(values=opcoes_padrao)
         self.cidades_combobox_5.set("NENHUM FILTRO")
-        
         lista = listar_cidades()
         self.lista_cidades_txt.delete("0.0", "end")
         if not lista:
@@ -531,58 +496,45 @@ class MainWindow(ctk.CTk):
             nome_busca = utils.NOME_ARQUIVO_ALVO.split('.')[0] 
             janelas_encontradas = pyautogui.getWindowsWithTitle(nome_busca)
             planilha_detectada = any(nome_busca.lower() in str(j.title).lower() for j in janelas_encontradas)
-
             if not planilha_detectada:
                  exibir_popup(title="Planilha Não Detectada", message=f"⚠️ A automação requer que a planilha '{utils.NOME_ARQUIVO_ALVO}' esteja aberta.\n\nPor favor, abra o arquivo Excel e tente novamente.", icon="cancel")
                  return
-
-            # Coleta as 5 cidades
             c1 = self.cidades_combobox_1.get()
             c2 = self.cidades_combobox_2.get()
             c3 = self.cidades_combobox_3.get()
             c4 = self.cidades_combobox_4.get()
             c5 = self.cidades_combobox_5.get()
-            
             backlog_val = self.backlog_combobox.get()
             delay_str = self.delay_combobox.get()
-            
             def limpar_valor(val):
                 if val and val.upper() not in ["NENHUM FILTRO", "SELECIONE", ""]: return val
                 return None
-
             if not limpar_valor(c1):
                 exibir_popup(title="Campo Obrigatório", message="⚠️ É obrigatório selecionar a 'Cidade 1 (Principal)' para iniciar a automação.", icon="warning")
                 return 
-            
             cidades_validas = []
             if limpar_valor(c1): cidades_validas.append(limpar_valor(c1))
             if limpar_valor(c2): cidades_validas.append(limpar_valor(c2))
             if limpar_valor(c3): cidades_validas.append(limpar_valor(c3))
             if limpar_valor(c4): cidades_validas.append(limpar_valor(c4))
             if limpar_valor(c5): cidades_validas.append(limpar_valor(c5))
-            
             cidade_final = ",".join(cidades_validas)
             msg_filtro = f"para: {cidade_final}"
             delay = utils.validar_e_obter_delay(delay_str)
             utils.DELAY_ATUAL = delay 
             utils.INDICE_ATUAL_DO_CICLO = 0
             utils.PARAR_AUTOMACAO = False
-            
             self.log_textbox.delete("1.0", "end")
             self._safe_update_gui(status="Rodando", total_ciclos=0, ciclo_atual=0)
             self._safe_configure_buttons("disabled", "disabled")
-            
             timestamp = time.strftime("%H:%M:%S")
             self.log_textbox.insert("end", f"[{timestamp}] Iniciando {msg_filtro} | Backlog: {backlog_val} (Delay: {delay}s)...\n")
-            
             if not self.monitor_thread_started:
                 t = threading.Thread(target=utils.monitorar_tecla_escape, args=(self.log_textbox,), daemon=True)
                 t.start()
                 self.monitor_thread_started = True
-
             t_core = threading.Thread(target=automacao_core, args=(self.log_textbox, cidade_final, backlog_val, delay, self._safe_configure_buttons, self._safe_update_gui))
             t_core.start()
-
         except Exception as e:
             timestamp = time.strftime("%H:%M:%S")
             self.log_textbox.insert("end", f"[{timestamp}] ❌ Erro ao iniciar: {e}\n")
@@ -598,7 +550,6 @@ class MainWindow(ctk.CTk):
             utils.PARAR_AUTOMACAO = False
             self._safe_update_gui(status="Rodando")
             self._safe_configure_buttons("disabled", "disabled")
-            
             timestamp = time.strftime("%H:%M:%S")
             self.log_textbox.insert("end", f"[{timestamp}] ▶ Retomando com Delay ajustado para: {novo_delay}s\n")
         except Exception as e:
@@ -620,13 +571,11 @@ class MainWindow(ctk.CTk):
              exibir_popup("Aviso", "Por favor, informe o ID da cidade para excluir.", "warning")
              self.del_id_entry.focus_set()
              return
-
         nome = buscar_nome_cidade_por_id(id_str)
         if not nome:
              exibir_popup("Erro", f"Não foi encontrada nenhuma cidade com o ID '{id_str}'.", "cancel")
              self.del_id_entry.focus_set()
              return
-        
         if exibir_confirmacao(title="Confirmar Exclusão", message=f"Tem certeza que deseja excluir a cidade abaixo?\n\nID: {id_str}\nNome: {nome}\n\nEssa ação não pode ser desfeita.", icon="question", option_ok="Excluir", option_cancel="Cancelar") == "Excluir":
             msg, ok = excluir_cidade(id_str)
             if ok:

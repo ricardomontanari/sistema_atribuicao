@@ -20,12 +20,12 @@ IMAGENS_DE_EXCECAO = [
 CACHE_IMAGENS = []
 CACHE_CARREGADO = False
 
-# Função auxiliar para log com horário (evita erros se utils não tiver log_time)
+# Função auxiliar para log com horário
 def _log(msg):
     return f"[{time.strftime('%H:%M:%S')}] {msg}"
 
 # ####################################################################
-# --- FUNÇÕES DE VERIFICAÇÃO VISUAL (CACHE + INSTANTÂNEA) ---
+# --- FUNÇÕES DE VERIFICAÇÃO VISUAL ---
 # ####################################################################
 
 def carregar_cache_imagens(log_textbox):
@@ -54,22 +54,21 @@ def carregar_cache_imagens(log_textbox):
 def verificar_excecoes_visuais(log_textbox):
     """
     Varredura IMEDIATA da tela.
-    Não espera tempo fixo. Retorna assim que encontra o primeiro erro.
-    Isso garante que o sistema rode rápido (0.05s) quando não há erros.
     """
     if not CACHE_CARREGADO: carregar_cache_imagens(log_textbox)
 
     for nome_img, img_obj in CACHE_IMAGENS:
         try:
-            # Tenta localizar com confiança 0.8 (Detecta mesmo com leve transparência/cor)
-            if pyautogui.locateOnScreen(img_obj, grayscale=True, confidence=0.8):
-                log_textbox.insert("end", _log(f"👁️ Erro visual detectado: '{nome_img}'\n"))
+            # Confiança ajustada para 0.75 para garantir detecção
+            # Se a imagem aparecer, o sistema VAI parar.
+            if pyautogui.locateOnScreen(img_obj, grayscale=True, confidence=0.75):
+                log_textbox.insert("end", _log(f"👁️ ERRO DETECTADO: '{nome_img}'\n"))
                 return True, nome_img
         except Exception:
             # Fallback para busca exata (caso a biblioteca opencv não esteja carregada)
             try:
                 if pyautogui.locateOnScreen(img_obj, grayscale=True):
-                    log_textbox.insert("end", _log(f"👁️ Erro visual (Exato): '{nome_img}'\n"))
+                    log_textbox.insert("end", _log(f"👁️ ERRO DETECTADO (Exato): '{nome_img}'\n"))
                     return True, nome_img
             except: pass
     
@@ -103,7 +102,7 @@ def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb):
     try: winsound.Beep(500, 500)
     except: pass
     
-    log_textbox.insert("end", _log("⏸️ PAUSADO. Resolva o erro e clique em 'CONTINUAR'.\n"))
+    log_textbox.insert("end", _log("⏸️ SISTEMA PAUSADO. Resolva o erro e clique em 'CONTINUAR'.\n"))
     log_textbox.see("end")
     
     # Habilita o botão 'Continuar'
@@ -134,13 +133,19 @@ def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb):
     return True
 
 def lidar_com_erro_e_pausar(log_textbox, msg_erro, safe_update_gui_cb, safe_configure_buttons_cb):
-    """Ativa a flag de pausa e chama a rotina de travamento."""
+    """
+    FORÇA O ESTADO DE PAUSA (Idêntico ao ESC) e chama o tratador.
+    """
+    # 1. Força a variável global de pausa IMEDIATAMENTE
     utils.PARAR_AUTOMACAO = True
+    
+    # 2. Atualiza a interface visualmente
     safe_update_gui_cb(status="Pausado")
     
     log_textbox.insert("end", _log(f"🛑 {msg_erro}\n"))
     log_textbox.see("end")
     
+    # 3. Entra no loop de espera
     if tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb):
         safe_update_gui_cb(status="Rodando")
         return True
@@ -211,7 +216,8 @@ def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, sa
                 # 2. Erro Visual (ANTES DA AÇÃO)
                 tem_erro, nome_erro = verificar_excecoes_visuais(log_textbox)
                 if tem_erro:
-                    # Pausa e espera você clicar em Continuar
+                    # AQUI OCORRE A MÁGICA: O sistema chama lidar_com_erro, que seta PARAR_AUTOMACAO = True
+                    # e trava o código até você resolver.
                     if lidar_com_erro_e_pausar(log_textbox, f"Erro na tela: {nome_erro}", safe_update_gui_cb, safe_configure_buttons_cb):
                         continue # Retomou? Verifica de novo (continue loop)
                     else: return
