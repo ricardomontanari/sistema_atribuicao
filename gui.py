@@ -281,7 +281,10 @@ class MainWindow(ctk.CTk):
     def setup_automacao_tab(self):
         tab = self.tabview.tab("Automação")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(5, weight=1) # Ajustado o peso para acomodar mais linhas
+        
+        # MUDANÇA PRINCIPAL AQUI:
+        # Definimos que a LINHA 4 (onde está o Log) é a que deve expandir (weight=1)
+        tab.rowconfigure(4, weight=1) 
 
         # Controles
         ctrl_frame = ctk.CTkFrame(tab)
@@ -353,7 +356,9 @@ class MainWindow(ctk.CTk):
 
         # Log
         ctk.CTkLabel(tab, text="Log de Execução:", anchor="w").grid(row=3, column=0, padx=10, pady=(10, 0), sticky="nw")
+        
         self.log_textbox = ReadOnlyTextbox(tab) 
+        # Garante que o grid do log ocupe todo o espaço disponível
         self.log_textbox.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
     def setup_cadastro_tab(self):

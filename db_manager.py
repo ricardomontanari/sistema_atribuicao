@@ -1,8 +1,47 @@
 import sqlite3
 import hashlib
+import json
+import os
 
-# Nome do arquivo do banco de dados SQLite
-DB_NAME = 'automacao_db.sqlite'
+# #####################################################################
+# --- CONFIGURAÇÃO DO NOME DO BANCO (DINÂMICO) ---
+# #####################################################################
+
+CONFIG_FILE = 'config_cliente.json'
+
+def obter_nome_banco():
+    """
+    Define o nome do arquivo do banco de dados.
+    1. Tenta ler 'config_cliente.json' para buscar o nome do cliente.
+    2. Se encontrar, gera 'automacao_db_NOMECLIENTE.sqlite'.
+    3. Se não encontrar, usa o padrão 'automacao_db.sqlite'.
+    """
+    nome_padrao = 'automacao_db.sqlite'
+    
+    # Procura o arquivo de config no mesmo diretório do executável/script
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                cliente = data.get('cliente', '').strip()
+                
+                if cliente:
+                    # Limpa o nome para evitar caracteres inválidos em arquivos
+                    # Ex: "São Paulo" vira "sao_paulo"
+                    safe_name = "".join([c for c in cliente if c.isalnum() or c in (' ', '-', '_')]).strip()
+                    safe_name = safe_name.replace(' ', '_').lower()
+                    
+                    db_name = f'automacao_db_{safe_name}.sqlite'
+                    print(f"🔧 Configuração detectada! Usando banco: {db_name}")
+                    return db_name
+                    
+        except Exception as e:
+            print(f"⚠️ Erro ao ler config do cliente: {e}")
+            
+    return nome_padrao
+
+# Define a constante globalmente para ser usada nas funções abaixo
+DB_NAME = obter_nome_banco()
 
 # #####################################################################
 # --- INICIALIZAÇÃO DO BANCO DE DADOS ---
@@ -177,7 +216,6 @@ def listar_usuarios():
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT username FROM usuarios ORDER BY username ASC")
-        # Retorna apenas uma lista de strings: ['admin', 'operador', ...]
         return [row[0] for row in cursor.fetchall()]
     except Exception:
         return []
