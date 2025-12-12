@@ -2,165 +2,144 @@ import sys
 import os
 import keyboard
 import time
-import subprocess
 import pandas as pd
 import utils 
-from datetime import datetime # NOVO: Import para obter a hora atual
 
-# --- CONSTANTES E CONFIGURAÇÕES GLOBAIS ---
-# NOME DO ARQUIVO ALVO DO EXCEL
+# ####################################################################
+# --- CONSTANTES GLOBAIS ---
+# ####################################################################
+
 NOME_ARQUIVO_ALVO = 'atribuicao.xlsx' 
 DEFAULT_DELAY_SECONDS = 0.2
-VERSAO_SISTEMA = '1.0.1' # Versão atualizada
+VERSAO_SISTEMA = 'Beta 1.1'
 
 # Variáveis de Estado Global
 PARAR_AUTOMACAO = False 
 INDICE_ATUAL_DO_CICLO = 0
 DELAY_ATUAL = DEFAULT_DELAY_SECONDS
-monitor_thread_started = False 
 
-# --- FUNÇÕES DE UTILIDADE ---
-
-def log_time(message):
-    """Retorna uma mensagem com o carimbo de tempo no formato [HH:MM:SS]."""
-    # NOVO: Formata a hora atual e concatena com a mensagem
-    return f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
-
+# ####################################################################
+# --- FUNÇÕES DE SISTEMA ---
+# ####################################################################
 
 def resource_path(relative_path):
     """
-    Obtém o caminho absoluto para recursos INTERNOS (embutidos no EXE, como imagens).
-    ESTA FUNÇÃO DEVE SER USADA APENAS PARA RECURSOS EMBUTIDOS (IMAGENS DE ERRO).
+    Obtém o caminho absoluto para recursos (imagens/ícones),
+    funcionando tanto em desenvolvimento quanto no executável.
     """
     try:
-        # Caso 1: Código rodando dentro do executável (pasta temporária)
         base_path = sys._MEIPASS
     except Exception:
-        # Caso 2: Código rodando no ambiente de desenvolvimento
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
-
-def get_external_path(relative_path):
-    """
-    Obtém o caminho absoluto para ARQUIVOS EXTERNOS (Excel e DB), 
-    usando o diretório de onde o executável (ou script) está rodando.
-    """
-    base_path = os.path.dirname(sys.argv[0])
-    
-    return os.path.join(base_path, relative_path)
-
 
 def abrir_planilha_alvo():
-    """Localiza o arquivo alvo na pasta ATUAL DO EXECUTÁVEL e o abre."""
-    caminho_arquivo = get_external_path(NOME_ARQUIVO_ALVO)
-    
-    if not os.path.exists(caminho_arquivo):
-        # NOVO: Usa log_time no retorno de erro
-        return False, log_time(f"❌ ERRO: Arquivo '{NOME_ARQUIVO_ALVO}' não encontrado em:\n{caminho_arquivo}")
-        
+    """
+    Tenta abrir o arquivo Excel alvo.
+    """
+    if not os.path.exists(NOME_ARQUIVO_ALVO):
+        return False, f"❌ Arquivo '{NOME_ARQUIVO_ALVO}' não encontrado."
     try:
-        if sys.platform == "win32":
-            subprocess.Popen(['start', '', caminho_arquivo], shell=True)
-        else:
-            opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
-            subprocess.Popen([opener, caminho_arquivo])
-            
-        return True, log_time(f"✅ Planilha '{NOME_ARQUIVO_ALVO}' aberta com sucesso.")
-
+        os.startfile(NOME_ARQUIVO_ALVO)
+        return True, f"✅ Planilha '{NOME_ARQUIVO_ALVO}' aberta."
     except Exception as e:
-        return False, log_time(f"❌ ERRO ao tentar abrir o arquivo: {e}")
+        return False, f"❌ Erro ao abrir arquivo: {e}"
+
+def validar_e_obter_delay(delay_input):
+    """
+    Valida e converte o delay da interface para float.
+    """
+    if not delay_input: 
+        return DEFAULT_DELAY_SECONDS
+    try:
+        val = float(str(delay_input).replace(',', '.'))
+        return val if val >= 0 else DEFAULT_DELAY_SECONDS
+    except: 
+        return DEFAULT_DELAY_SECONDS
+
+# ####################################################################
+# --- MONITORAMENTO DE TECLADO ---
+# ####################################################################
 
 def monitorar_tecla_escape(log_textbox):
     """
-    Monitora a tecla ESC e define a flag PARAR_AUTOMACAO como True (PAUSA).
+    Thread que monitora a tecla ESC para solicitar pausa.
     """
     while True: 
         try:
             keyboard.wait('esc')
-            
-            # APENAS PAUSA se ainda não estiver pausado
-            if not utils.PARAR_AUTOMACAO: 
-                utils.PARAR_AUTOMACAO = True 
-                # NOVO: Usa log_time
-                log_textbox.insert("end", utils.log_time("\n[ESC] PAUSA solicitada. Aguardando fim do ciclo.\n"))
+            if not PARAR_AUTOMACAO: 
+                globals()['PARAR_AUTOMACAO'] = True 
+                log_textbox.insert("end", "\n[ESC] PAUSA solicitada. Aguardando fim do ciclo atual...\n")
                 log_textbox.see("end")
-
             time.sleep(0.5) 
-            
         except Exception:
             time.sleep(1)
 
-def validar_e_obter_delay(delay_input):
-    """Lê, valida e retorna o valor do delay em segundos (float)."""
-    if not delay_input:
-        return DEFAULT_DELAY_SECONDS
+# ####################################################################
+# --- LEITURA DE DADOS (ESTRITA: SHEET1) ---
+# ####################################################################
+
+def ler_e_filtrar_dados(arquivo, cidade_filtro, backlog_filtro, log_textbox):
+    """
+    Lê estritamente a aba chamada 'sheet1' (case-insensitive).
+    Se não encontrar, gera erro.
+    """
+    if not os.path.exists(arquivo):
+        raise FileNotFoundError(f"Arquivo '{arquivo}' não encontrado.")
     
     try:
-        delay_valor = float(str(delay_input).replace(',', '.'))
-        if delay_valor < 0:
-             raise ValueError("O Delay deve ser zero ou um valor positivo.")
-        return delay_valor
-    except ValueError:
-        raise ValueError("Delay deve ser um número válido (ex: 0.5, 1.0).")
+        # 1. Carrega o Excel
+        xls = pd.ExcelFile(arquivo)
+        abas = xls.sheet_names
+        df = None
+        
+        log_textbox.insert("end", f"📂 Buscando aba 'Sheet1' no arquivo...\n")
 
-def ler_e_filtrar_dados(nome_arquivo, cidade_filtro, backlog_filtro, log_textbox):
-    """
-    Lê a planilha e aplica os filtros: Backlog time(Station) e Cidades.
-    """
-    caminho_arquivo = get_external_path(nome_arquivo)
-    
-    if not os.path.exists(caminho_arquivo):
-        msg = f"❌ ERRO: Arquivo '{nome_arquivo}' não encontrado."
-        # NOVO: Usa log_time no retorno de erro
-        return None, 0, utils.log_time(msg)
+        # 2. Busca Estrita por 'sheet1'
+        aba_encontrada = None
+        for aba in abas:
+            if aba.strip().lower() == "sheet1":
+                aba_encontrada = aba
+                break
         
-    try:
-        df = pd.read_excel(caminho_arquivo)
-        
-        # --- FILTRO 1: Validação de Backlog time(Station) ---
-        col_backlog = 'Backlog time(Station)'
-        if col_backlog in df.columns:
-            if not backlog_filtro:
-                backlog_filtro = "1"
-            
-            # Suporta múltiplos backlogs (ex: "1, 2")
-            lista_backlogs = [b.strip() for b in str(backlog_filtro).split(',') if b.strip()]
-            df = df[df[col_backlog].astype(str).str.strip().isin(lista_backlogs)]
-            
+        if aba_encontrada:
+            df = pd.read_excel(xls, sheet_name=aba_encontrada)
+            log_textbox.insert("end", f"✅ Aba '{aba_encontrada}' carregada com sucesso.\n")
         else:
-             # NOVO: Usa log_time
-             log_textbox.insert("end", utils.log_time(f"⚠️ Aviso: Coluna '{col_backlog}' não encontrada. Filtro de backlog ignorado.\n"))
+            raise ValueError("Aba 'Sheet1' não encontrada. Verifique o nome da aba no Excel.")
 
-        # Validação de colunas de Cidade
-        coluna_filtro = None
-        if 'Destination City' in df.columns:
-             coluna_filtro = 'Destination City'
-        elif 'Cidade' in df.columns:
-             coluna_filtro = 'Cidade'
+        # 3. Validação de Colunas Mínimas
+        colunas = [c.strip() for c in df.columns]
+        tem_id = any(c in colunas for c in ['Waybill No', 'Motorista ID'])
         
-        if not coluna_filtro:
-             # NOVO: Usa log_time
-             log_textbox.insert("end", utils.log_time("⚠️ Aviso: Coluna de cidade não encontrada. Verifique o Excel.\n"))
+        if not tem_id:
+            log_textbox.insert("end", "⚠️ Aviso: Coluna de ID ('Waybill No') não encontrada na Sheet1.\n")
 
+        # 4. Filtro de Backlog
+        registros_iniciais = len(df)
+        if backlog_filtro and str(backlog_filtro).strip():
+            if 'Backlog' in df.columns:
+                try:
+                    val = int(backlog_filtro)
+                    df = df[df['Backlog'] == val]
+                except: pass 
+            else:
+                 log_textbox.insert("end", "⚠️ Coluna 'Backlog' não existe. Filtro ignorado.\n")
 
-        # --- FILTRO 2: Aplica o filtro de Cidades ---
-        if cidade_filtro and cidade_filtro != "NENHUM FILTRO" and cidade_filtro != "SELECIONE" and coluna_filtro:
+        # 5. Filtro de Cidade
+        if cidade_filtro and cidade_filtro not in ["NENHUM FILTRO", "SELECIONE", ""]:
+            col_cidade = 'Destination City' if 'Destination City' in df.columns else 'Cidade'
             
-            # Suporta múltiplas cidades (ex: "CURITIBA, SÃO PAULO")
-            lista_cidades = [c.strip().upper() for c in cidade_filtro.split(',') if c.strip()]
-            
-            df_filtrado = df[df[coluna_filtro].astype(str).str.upper().isin(lista_cidades)]
-            
-            msg = f"✅ Planilha lida (Backlog={backlog_filtro}). Filtro Cidades: {lista_cidades} -> {len(df_filtrado)} registros."
-        else:
-            df_filtrado = df
-            msg = f"✅ Planilha lida (Backlog={backlog_filtro}). Todas as cidades ({len(df)} registros)."
-            
-        repetir = len(df_filtrado)
-        # NOVO: Usa log_time no retorno de sucesso
-        return df_filtrado, repetir, utils.log_time(msg)
-        
+            if col_cidade in df.columns:
+                lista_desejada = [c.strip().upper() for c in cidade_filtro.split(',') if c.strip()]
+                df = df[df[col_cidade].astype(str).str.strip().str.upper().isin(lista_desejada)]
+            else:
+                log_textbox.insert("end", f"⚠️ Coluna '{col_cidade}' não encontrada. Filtro ignorado.\n")
+
+        count = len(df)
+        msg = f"📊 Processamento: {registros_iniciais} registros -> {count} filtrados."
+        return df, count, msg
+
     except Exception as e:
-        msg = f"❌ ERRO ao processar Excel: {e}"
-        return None, 0, utils.log_time(msg)
+        raise ValueError(f"Erro ao ler Excel: {e}")

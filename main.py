@@ -1,12 +1,18 @@
 import customtkinter as ctk
-# Importamos as duas classes que estarão no gui.py
-from gui import LoginWindow, MainWindow 
+from gui import App
+
+# Configuração Global de Tema
+# Modos: "System" (Padrão do OS), "Dark" (Escuro), "Light" (Claro)
+ctk.set_appearance_mode("Dark") 
+# Temas de Cor: "blue" (Padrão), "green", "dark-blue"
+ctk.set_default_color_theme("green")
 
 if __name__ == "__main__":
-    # Configuração inicial do tema
-    ctk.set_appearance_mode("Dark")  # Modes: "System" (default), "Dark", "Light"
-    ctk.set_default_color_theme("green")  # Themes: "blue" (default), "green", "dark-blue"
+    # Inicializa a Aplicação Unificada
+    app = App()
     
-    # Inicia a janela de login
-    login_app = LoginWindow()
-    login_app.mainloop()
+    # Previne fechamento acidental de threads ao fechar a janela principal
+    try:
+        app.mainloop()
+    except KeyboardInterrupt:
+        print("Aplicação encerrada via terminal.")
