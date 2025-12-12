@@ -31,7 +31,7 @@ BTN_HEIGHT_MAIN = 40
 COLOR_SUCCESS = "green"           # Botões: Iniciar, Adicionar, Salvar
 COLOR_SUCCESS_HOVER = "darkgreen"
 
-COLOR_DANGER = "red"              # Botões: Excluir, Remover
+COLOR_DANGER = "red"              # Botões: Excluir, Parar, Remover
 COLOR_DANGER_HOVER = "darkred"
 
 COLOR_WARNING = "#1565C0"         # Botão: CONTINUAR (Azul Real)
@@ -90,7 +90,7 @@ class App(ctk.CTk):
         
         # --- DEFINIÇÃO DE TAMANHOS ---
         self.geo_login = (400, 450) # Minimalista para Login
-        self.geo_main = (650, 650)  # [AJUSTADO] Tamanho solicitado: 650x650
+        self.geo_main = (650, 650)  # Tamanho principal
         
         # Inicia com o tamanho minimalista centralizado
         self.ajustar_geometria(*self.geo_login)
@@ -180,13 +180,10 @@ class App(ctk.CTk):
                 with open(CONFIG_LOGIN_FILE, 'w') as f: json.dump(data, f)
             except: pass
             
-            # Remove tela de login
+            # Remove tela de login e ajusta tamanho
             self.login_frame.destroy()
             self.unbind('<Return>')
-            
-            # --- TRANSIÇÃO: Aumenta a janela para o tamanho principal ---
             self.ajustar_geometria(*self.geo_main)
-            
             self.construir_tela_principal()
         else:
             exibir_popup("Acesso Negado", "Usuário ou senha incorretos.", "cancel")
@@ -223,7 +220,7 @@ class App(ctk.CTk):
         ctrl_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         ctrl_frame.columnconfigure((1, 3), weight=1)
 
-        # Linha 1: Cidade 1 e Delay
+        # Linha 1
         ctk.CTkLabel(ctrl_frame, text="Cidade Principal:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_1 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_1.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
@@ -233,7 +230,7 @@ class App(ctk.CTk):
         self.delay_combobox.set("0.2")
         self.delay_combobox.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
-        # Linha 2: Cidade 2 e Status
+        # Linha 2
         ctk.CTkLabel(ctrl_frame, text="Cidade 2 (Opc):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_2 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_2.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
@@ -244,7 +241,7 @@ class App(ctk.CTk):
         self.status_color.trace_add("write", lambda *args: self.status_lbl.configure(fg_color=self.status_color.get()))
         self.status_color.set("gray")
 
-        # Linha 3: Cidade 3 e Backlog
+        # Linha 3
         ctk.CTkLabel(ctrl_frame, text="Cidade 3 (Opc):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_3 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_3.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
@@ -254,11 +251,12 @@ class App(ctk.CTk):
         self.backlog_combobox.set("1")
         self.backlog_combobox.grid(row=2, column=3, padx=5, pady=5, sticky="ew")
 
-        # Cidades 4 e 5
+        # Linha 4
         ctk.CTkLabel(ctrl_frame, text="Cidade 4 (Opc):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_4 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_4.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
+        # Linha 5
         ctk.CTkLabel(ctrl_frame, text="Cidade 5 (Opc):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
         self.cidades_combobox_5 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
         self.cidades_combobox_5.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
@@ -397,7 +395,8 @@ class App(ctk.CTk):
         def update():
             if status:
                 self.status_text.set(status.upper())
-                colors = {"Rodando": "blue", "Pausado": "orange", "Erro": "red", "Finalizado": "green"}
+                # Adicionado "Parado" com cor vermelha
+                colors = {"Rodando": "blue", "Pausado": "orange", "Erro": "red", "Finalizado": "green", "Parado": "red"}
                 self.status_color.set(colors.get(status, "gray"))
             
             if total_ciclos is not None:
@@ -417,10 +416,98 @@ class App(ctk.CTk):
         self.after(0, lambda: self._unsafe_btns(iniciar_state, continuar_state))
 
     def _unsafe_btns(self, i_state, c_state):
-        self.iniciar_btn.configure(state=i_state)
+        # LÓGICA DO BOTÃO PARAR:
+        # Se o botão Continuar estiver ativo ('normal'), significa que estamos em PAUSA.
+        # Nesse momento, transformamos o botão 'Iniciar' em 'PARAR'.
+        if c_state == "normal":
+            self.iniciar_btn.configure(text="PARAR", fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, 
+                                       command=self.parar_automacao, state="normal")
+        else:
+            # Caso contrário (Rodando ou Parado), volta a ser 'INICIAR'
+            self.iniciar_btn.configure(text="INICIAR", fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
+                                       command=self.iniciar_automacao, state=i_state)
+        
         self.continuar_btn.configure(state=c_state)
 
-    # --- LÓGICA DE DADOS ---
+    # --- LÓGICA DE AÇÃO ---
+
+    def parar_automacao(self):
+        """Função chamada pelo botão PARAR (Vermelho)."""
+        self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] 🛑 Solicitando parada forçada...\n")
+        utils.CANCELAR_AUTOMACAO = True
+        utils.PARAR_AUTOMACAO = False # Destrava o loop de pausa para permitir o cancelamento
+        self.iniciar_btn.configure(state="disabled") # Evita clique duplo enquanto processa o cancelamento
+
+    def iniciar_automacao(self):
+        try:
+            # Verifica Planilha Aberta
+            nome_busca = utils.NOME_ARQUIVO_ALVO.split('.')[0] 
+            janelas = pyautogui.getWindowsWithTitle(nome_busca)
+            if not any(nome_busca.lower() in str(j.title).lower() for j in janelas):
+                 exibir_popup("Erro", f"A planilha '{utils.NOME_ARQUIVO_ALVO}' precisa estar aberta.", "cancel")
+                 return
+
+            # Coleta Cidades
+            cidades = []
+            for cb in [self.cidades_combobox_1, self.cidades_combobox_2, self.cidades_combobox_3,
+                       self.cidades_combobox_4, self.cidades_combobox_5]:
+                val = cb.get()
+                if val and val not in ["NENHUM FILTRO", "SELECIONE", ""]:
+                    cidades.append(val)
+            
+            if not cidades:
+                exibir_popup("Aviso", "Selecione pelo menos a Cidade Principal.", "warning")
+                return 
+
+            cidade_final = ",".join(cidades)
+            backlog = self.backlog_combobox.get()
+            delay = utils.validar_e_obter_delay(self.delay_combobox.get())
+            
+            # Configura Variáveis Globais
+            utils.DELAY_ATUAL = delay 
+            utils.INDICE_ATUAL_DO_CICLO = 0
+            utils.PARAR_AUTOMACAO = False
+            utils.CANCELAR_AUTOMACAO = False # Reseta flag de cancelamento
+            
+            # Reseta UI
+            self.log_textbox.delete("1.0", "end")
+            self._safe_update_gui(status="Rodando", total_ciclos=0, ciclo_atual=0)
+            self._safe_configure_buttons("disabled", "disabled")
+            
+            self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] Iniciando para: {cidade_final}\n")
+            
+            # Inicia Monitoramento ESC
+            if not self.monitor_thread_started:
+                t = threading.Thread(target=utils.monitorar_tecla_escape, args=(self.log_textbox,), daemon=True)
+                t.start()
+                self.monitor_thread_started = True
+            
+            # Inicia Thread Principal
+            t_core = threading.Thread(
+                target=automacao_core, 
+                args=(self.log_textbox, cidade_final, backlog, delay, self._safe_configure_buttons, self._safe_update_gui)
+            )
+            t_core.start()
+            
+        except Exception as e:
+            self.log_textbox.insert("end", f"❌ Erro ao iniciar: {e}\n")
+            self._safe_update_gui(status="Erro")
+            self._safe_configure_buttons("normal", "disabled")
+
+    def continuar_automacao(self):
+        if not utils.PARAR_AUTOMACAO: return
+        try:
+            novo_delay = utils.validar_e_obter_delay(self.delay_combobox.get())
+            utils.DELAY_ATUAL = novo_delay 
+            utils.PARAR_AUTOMACAO = False
+            
+            self._safe_update_gui(status="Rodando")
+            self._safe_configure_buttons("disabled", "disabled")
+            self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] ▶ Retomando...\n")
+        except Exception as e:
+            self.log_textbox.insert("end", f"❌ Erro ao continuar: {e}\n")
+
+    # --- CRUD e Outros ---
 
     def carregar_cidades_db(self):
         self.todas_cidades = buscar_nomes_cidades()
@@ -466,76 +553,6 @@ class App(ctk.CTk):
             # Restaura a seleção se ela ainda for válida, senão reseta
             if atual in opcoes_disp: cb.set(atual)
             else: cb.set("NENHUM FILTRO")
-
-    # --- LÓGICA DE AÇÃO ---
-
-    def iniciar_automacao(self):
-        try:
-            # Verifica Planilha Aberta
-            nome_busca = utils.NOME_ARQUIVO_ALVO.split('.')[0] 
-            janelas = pyautogui.getWindowsWithTitle(nome_busca)
-            if not any(nome_busca.lower() in str(j.title).lower() for j in janelas):
-                 exibir_popup("Erro", f"A planilha '{utils.NOME_ARQUIVO_ALVO}' precisa estar aberta.", "cancel")
-                 return
-
-            # Coleta Cidades
-            cidades = []
-            for cb in [self.cidades_combobox_1, self.cidades_combobox_2, self.cidades_combobox_3,
-                       self.cidades_combobox_4, self.cidades_combobox_5]:
-                val = cb.get()
-                if val and val not in ["NENHUM FILTRO", "SELECIONE", ""]:
-                    cidades.append(val)
-            
-            if not cidades:
-                exibir_popup("Aviso", "Selecione pelo menos a Cidade Principal.", "warning")
-                return 
-
-            cidade_final = ",".join(cidades)
-            backlog = self.backlog_combobox.get()
-            delay = utils.validar_e_obter_delay(self.delay_combobox.get())
-            
-            # Configura Variáveis Globais
-            utils.DELAY_ATUAL = delay 
-            utils.INDICE_ATUAL_DO_CICLO = 0
-            utils.PARAR_AUTOMACAO = False
-            
-            # Reseta UI
-            self.log_textbox.delete("1.0", "end")
-            self._safe_update_gui(status="Rodando", total_ciclos=0, ciclo_atual=0)
-            self._safe_configure_buttons("disabled", "disabled")
-            
-            self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] Iniciando para: {cidade_final}\n")
-            
-            # Inicia Monitoramento ESC
-            if not self.monitor_thread_started:
-                t = threading.Thread(target=utils.monitorar_tecla_escape, args=(self.log_textbox,), daemon=True)
-                t.start()
-                self.monitor_thread_started = True
-            
-            # Inicia Thread Principal
-            t_core = threading.Thread(
-                target=automacao_core, 
-                args=(self.log_textbox, cidade_final, backlog, delay, self._safe_configure_buttons, self._safe_update_gui)
-            )
-            t_core.start()
-            
-        except Exception as e:
-            self.log_textbox.insert("end", f"❌ Erro ao iniciar: {e}\n")
-            self._safe_update_gui(status="Erro")
-            self._safe_configure_buttons("normal", "disabled")
-
-    def continuar_automacao(self):
-        if not utils.PARAR_AUTOMACAO: return
-        try:
-            novo_delay = utils.validar_e_obter_delay(self.delay_combobox.get())
-            utils.DELAY_ATUAL = novo_delay 
-            utils.PARAR_AUTOMACAO = False
-            
-            self._safe_update_gui(status="Rodando")
-            self._safe_configure_buttons("disabled", "disabled")
-            self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] ▶ Retomando...\n")
-        except Exception as e:
-            self.log_textbox.insert("end", f"❌ Erro ao continuar: {e}\n")
 
     def add_cidade_ui(self):
         msg, ok = adicionar_cidade(self.nova_cidade_entry.get())

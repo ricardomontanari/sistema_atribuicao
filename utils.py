@@ -11,10 +11,11 @@ import utils
 
 NOME_ARQUIVO_ALVO = 'atribuicao.xlsx' 
 DEFAULT_DELAY_SECONDS = 0.2
-VERSAO_SISTEMA = 'Beta 1.1'
+VERSAO_SISTEMA = 'Beta 1.2 (Stop Button)'
 
 # Variáveis de Estado Global
 PARAR_AUTOMACAO = False 
+CANCELAR_AUTOMACAO = False # <--- NOVA FLAG: Permite abortar a execução
 INDICE_ATUAL_DO_CICLO = 0
 DELAY_ATUAL = DEFAULT_DELAY_SECONDS
 
@@ -69,6 +70,7 @@ def monitorar_tecla_escape(log_textbox):
         try:
             keyboard.wait('esc')
             if not PARAR_AUTOMACAO: 
+                # Usa globals() para modificar a variável deste próprio módulo
                 globals()['PARAR_AUTOMACAO'] = True 
                 log_textbox.insert("end", "\n[ESC] PAUSA solicitada. Aguardando fim do ciclo atual...\n")
                 log_textbox.see("end")
@@ -77,13 +79,12 @@ def monitorar_tecla_escape(log_textbox):
             time.sleep(1)
 
 # ####################################################################
-# --- LEITURA DE DADOS (ESTRITA: SHEET1) ---
+# --- LEITURA DE DADOS ---
 # ####################################################################
 
 def ler_e_filtrar_dados(arquivo, cidade_filtro, backlog_filtro, log_textbox):
     """
     Lê estritamente a aba chamada 'sheet1' (case-insensitive).
-    Se não encontrar, gera erro.
     """
     if not os.path.exists(arquivo):
         raise FileNotFoundError(f"Arquivo '{arquivo}' não encontrado.")

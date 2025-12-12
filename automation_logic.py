@@ -16,7 +16,7 @@ IMAGENS_DE_EXCECAO = [
     "erro_baixada.png"
 ]
 
-# Cache para armazenar os objetos de imagem na memória RAM (Performance)
+# Cache para armazenar os objetos de imagem na memória RAM
 CACHE_IMAGENS = []
 CACHE_CARREGADO = False
 
@@ -31,7 +31,6 @@ def _log(msg):
 def carregar_cache_imagens(log_textbox):
     """
     Carrega as imagens de erro do disco para a memória RAM.
-    Isso evita leitura de disco repetitiva e acelera a detecção.
     """
     global CACHE_IMAGENS, CACHE_CARREGADO
     if CACHE_CARREGADO: return
@@ -73,11 +72,11 @@ def verificar_erro_visual_na_tela(log_textbox):
 
     for nome_img, img_obj in CACHE_IMAGENS:
         try:
-            # Tenta com confiança 0.8 (Requer OpenCV, mas é mais robusto)
+            # Tenta com confiança 0.8
             if pyautogui.locateOnScreen(img_obj, grayscale=True, confidence=0.8):
                 return True, nome_img
         except Exception:
-            # Fallback: Busca exata (pixel-perfect) se a confiança falhar
+            # Fallback
             try:
                 if pyautogui.locateOnScreen(img_obj, grayscale=True):
                     return True, nome_img
@@ -92,6 +91,7 @@ def verificar_erro_visual_na_tela(log_textbox):
 def focar_janela_por_titulo(titulo_parcial, log_textbox):
     """
     Tenta trazer para frente uma janela que contenha o título parcial.
+    Esta versão é silenciosa no log para evitar poluição em ações rápidas.
     """
     try:
         janelas = pyautogui.getWindowsWithTitle(titulo_parcial)
@@ -113,7 +113,6 @@ def garantir_foco_navegador(log_textbox):
 def verificar_e_esperar_limpeza_de_erro(log_textbox):
     """
     Verifica se o erro sumiu da tela antes de permitir a retomada.
-    Aguarda até 5 segundos. Se não sumir, retorna False.
     """
     MAX_WAIT_TIME = 5.0
     start_time = time.time()
@@ -134,19 +133,29 @@ def verificar_e_esperar_limpeza_de_erro(log_textbox):
 def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle=False):
     """
     Bloqueia a execução enquanto o sistema está pausado.
-    Gerencia a lógica de 'Continuar', 'Finalizar' (se último ciclo) e 'Recursão' (se erro persistir).
+    Retorna:
+      (True, False) -> Retomar e Continuar
+      (True, True)  -> Retomar e Finalizar (Último ciclo)
+      (False, True) -> ABORTAR/CANCELAR AUTOMACAO
     """
     try: winsound.Beep(500, 500)
     except: pass
     
-    log_textbox.insert("end", _log("⏸️ SISTEMA PAUSADO. Resolva e clique em 'CONTINUAR'.\n"))
+    log_textbox.insert("end", _log("⏸️ SISTEMA PAUSADO. Resolva o erro e clique em 'CONTINUAR' ou 'PARAR'.\n"))
     log_textbox.see("end")
     
-    # Habilita o botão 'Continuar' na GUI
+    # Sinaliza para a GUI transformar INICIAR em PARAR
     safe_configure_buttons_cb(iniciar_state="disabled", continuar_state="normal")
     
     # === LOOP DE BLOQUEIO ===
     while utils.PARAR_AUTOMACAO:
+        # Se uma flag de cancelamento for ativada externamente (ex: Botão Parar)
+        if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+            # AÇÃO DE FOCO NO CANCELAMENTO (Foco é dado aqui)
+            focar_janela_por_titulo("Atribuidor", log_textbox) 
+            log_textbox.insert("end", _log("⛔ Cancelamento solicitado pelo usuário.\n"))
+            return False, True # Abortar
+
         time.sleep(0.5)
     
     # --- USUÁRIO CLICOU EM CONTINUAR ---
@@ -159,19 +168,20 @@ def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_
 
     log_textbox.insert("end", _log("Verificando limpeza da tela e foco...\n"))
 
-    # 1. Verifica se o erro foi fechado
     if not verificar_e_esperar_limpeza_de_erro(log_textbox):
         log_textbox.insert("end", _log("⚠️ Pausando novamente. Por favor, feche o erro.\n"))
         utils.PARAR_AUTOMACAO = True
         return tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
     
-    # 2. Recupera foco do navegador
+    # DEVOLVE O FOCO À APLICAÇÃO ANTES DE CONTINUAR A VERIFICAÇÃO DE FOCO DE JANELA
+    # O foco é restaurado aqui (após clicar em CONTINUAR)
+    focar_janela_por_titulo("Atribuidor", log_textbox) 
+
     if not garantir_foco_navegador(log_textbox):
         log_textbox.insert("end", _log("❌ Foco perdido. Pausando novamente.\n"))
         utils.PARAR_AUTOMACAO = True
         return tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
 
-    # 3. Verificação final pós-foco (Garante que o erro não voltou ao focar a janela)
     time.sleep(0.2) 
     tem_erro_final, nome_erro_final = verificar_erro_visual_na_tela(log_textbox)
     
@@ -187,7 +197,7 @@ def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_
     log_textbox.insert("end", _log("▶️ Retomando automação...\n"))
     safe_configure_buttons_cb(iniciar_state="disabled", continuar_state="disabled")
     
-    return True, False # (Retomada OK, Não Finalizar)
+    return True, False 
 
 def acionar_pausa_sistema(log_textbox, motivo, safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=False):
     """
@@ -199,14 +209,18 @@ def acionar_pausa_sistema(log_textbox, motivo, safe_update_gui_cb, safe_configur
     log_textbox.insert("end", _log(f"🛑 {motivo}\n"))
     log_textbox.see("end")
     
+    # Captura o retorno (Retomada OK, Deve Finalizar/Abortar)
     retomada_ok, deve_finalizar = tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
     
     if deve_finalizar:
-        return True # Sinaliza para finalizar o loop principal
+        # Se foi abortado (retomada_ok=False) ou finalizado normal (retomada_ok=True e is_last)
+        return True 
     
     if retomada_ok:
         safe_update_gui_cb(status="Rodando")
         return True
+    
+    # Se chegou aqui, algo falhou gravemente ou foi cancelado
     return False
 
 # ####################################################################
@@ -250,11 +264,15 @@ def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, sa
         
         # 3. Loop Principal
         for i in range(utils.INDICE_ATUAL_DO_CICLO, repetir):
+            # Verifica cancelamento global antes de começar o ciclo
+            if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+                log_textbox.insert("end", _log("⛔ Automação CANCELADA pelo usuário.\n"))
+                break
+
             utils.INDICE_ATUAL_DO_CICLO = i
             linha = dados.iloc[i]
             is_last = (i == repetir - 1)
             
-            # Obtém valor da etiqueta/ID
             try:
                 if 'Waybill No' in dados.columns: val = str(linha['Waybill No'])
                 elif 'Motorista ID' in dados.columns: val = str(linha['Motorista ID'])
@@ -269,17 +287,36 @@ def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, sa
             finalizar_automacao = False
             
             while True:
+                # Checa cancelamento dentro do loop de retry
+                if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+                    finalizar_automacao = True; break
+
                 # A) Pausa Manual (ESC)
                 if utils.PARAR_AUTOMACAO:
-                    if acionar_pausa_sistema(log_textbox, "Pausa Manual", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last):
-                        finalizar_automacao = True; break 
-                    else: return
+                    # acionar_pausa_sistema agora retorna True se deve parar (cancelar ou finalizar)
+                    deve_parar = acionar_pausa_sistema(log_textbox, "Pausa Manual", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
+                    
+                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+                        finalizar_automacao = True; break
+
+                    if deve_parar:
+                        if is_last:
+                            finalizar_automacao = True
+                            break
+                        # Se não foi cancelado e não é o último, apenas CONTINUA (Retomada)
+                        pass 
+                    else: 
+                        # Erro na retomada
+                        return
 
                 # B) Ação: Colar + Enter
                 if not executar_acao_colar_enter(val, utils.DELAY_ATUAL):
-                    if acionar_pausa_sistema(log_textbox, "Falha no teclado", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last):
-                        continue # Tenta de novo se foi falha técnica
-                    else: return
+                    deve_parar = acionar_pausa_sistema(log_textbox, "Falha no teclado", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
+                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+                        finalizar_automacao = True; break
+                    if deve_parar and is_last:
+                        finalizar_automacao = True; break
+                    continue
 
                 # C) Radar de Erro (0.5 segundos)
                 inicio_radar = time.time()
@@ -291,31 +328,35 @@ def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, sa
                     if tem_erro: break 
                     time.sleep(0.1)
 
-                # D) Tratamento se houve erro
+                # D) Tratamento se houve erro (VISUAL)
                 if tem_erro:
-                    # Se for o ÚLTIMO item, apenas loga e finaliza (sem pausar)
                     if is_last:
                         log_textbox.insert("end", _log(f"🛑 Último item ({val}) com Erro: {nome_erro}. Finalizando.\n"))
                         finalizar_automacao = True
                         break
                     
-                    # Se NÃO for o último, pausa e espera correção
-                    retomou_sucesso = acionar_pausa_sistema(log_textbox, f"Erro Visual: {nome_erro}", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
+                    deve_parar = acionar_pausa_sistema(log_textbox, f"Erro Visual: {nome_erro}", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
                     
-                    if retomou_sucesso:
-                        log_textbox.insert("end", _log("⚠️ Item com erro tratado. Pulando para o próximo.\n"))
-                        break # Pula para o próximo item
-                    else: return # Falha na retomada
+                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
+                        finalizar_automacao = True; break
 
-                # Se chegou aqui, não houve erro -> Sucesso
+                    # Se retomou com sucesso de um erro visual, PULA para o próximo (conforme regra)
+                    log_textbox.insert("end", _log("⚠️ Item com erro tratado. Pulando para o próximo.\n"))
+                    break 
+
+                # Se chegou aqui, não houve erro e ação foi feita -> Sucesso do ciclo
                 break 
             
             if finalizar_automacao:
                 break
 
-        winsound.Beep(1000, 500)
-        log_textbox.insert("end", _log("✅ Automação Finalizada!\n"))
-        safe_update_gui_cb(status="Finalizado")
+        if not getattr(utils, 'CANCELAR_AUTOMACAO', False):
+            winsound.Beep(1000, 500)
+            log_textbox.insert("end", _log("✅ Automação Finalizada!\n"))
+            safe_update_gui_cb(status="Finalizado")
+        else:
+            log_textbox.insert("end", _log("⛔ Automação abortada.\n"))
+            safe_update_gui_cb(status="Parado")
 
     except Exception as e:
         log_textbox.insert("end", _log(f"❌ ERRO FATAL: {e}\n"))
@@ -323,9 +364,14 @@ def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, sa
         sucesso = False
         
     finally:
-        # Reset de índice apenas se terminou tudo
-        if (sucesso and utils.INDICE_ATUAL_DO_CICLO == repetir - 1) or (utils.INDICE_ATUAL_DO_CICLO == repetir - 1):
-            utils.INDICE_ATUAL_DO_CICLO = 0
+        # NOVO: Garante que o foco volte para o Atribuidor ao Finalizar/Abortar
+        focar_janela_por_titulo("Atribuidor", log_textbox) 
+        
+        # Reset total do estado
+        utils.CANCELAR_AUTOMACAO = False 
+        utils.PARAR_AUTOMACAO = False
+        
+        # Se terminou com sucesso ou foi cancelado, reseta o índice para 0
+        utils.INDICE_ATUAL_DO_CICLO = 0
             
         safe_configure_buttons_cb(iniciar_state="normal", continuar_state="disabled")
-        utils.PARAR_AUTOMACAO = False
