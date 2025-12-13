@@ -11,7 +11,7 @@ import utils
 
 NOME_ARQUIVO_ALVO = 'atribuicao.xlsx' 
 DEFAULT_DELAY_SECONDS = 0.2
-VERSAO_SISTEMA = 'Beta 1.2 (Stop Button)'
+VERSAO_SISTEMA = 'Beta 1.2'
 
 # Variáveis de Estado Global
 PARAR_AUTOMACAO = False 
