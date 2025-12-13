@@ -40,6 +40,11 @@ COLOR_WARNING_HOVER = "#0D47A1"
 COLOR_NEUTRAL = "#00796B"         # Botão: EXCEL (Teal/Verde-petróleo)
 COLOR_NEUTRAL_HOVER = "#004D40"
 
+# NOVA COR: Cinza Claro para Limpar (Lighter Gray for Clear Button)
+# ATUALIZADO: Usando um tom de cinza mais claro (Prata) para melhor visibilidade no tema escuro.
+COLOR_CLEAR = "#A0A0A0" 
+COLOR_CLEAR_HOVER = "#808080"
+
 # ####################################################################
 # --- COMPONENTES PERSONALIZADOS ---
 # ####################################################################
@@ -78,7 +83,87 @@ def exibir_confirmacao(title, message, icon="question", option_ok="Confirmar", o
     return msg_box.get()
 
 # ####################################################################
-# --- CLASSE PRINCIPAL (APP) ---
+# --- CLASSE 1: JANELA DE LOGIN ---
+# ####################################################################
+
+class LoginWindow(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        setup_database() 
+        
+        self.title("Login") 
+        window_width = 350
+        window_height = 380
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = int((screen_width - window_width) / 2)
+        y = int((screen_height - window_height) / 2)
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.resizable(False, False)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1) 
+
+        login_frame = ctk.CTkFrame(self)
+        login_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        login_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(login_frame, text="Acesso ao Atribuidor", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, pady=(30, 20), padx=20)
+
+        self.username_entry = ctk.CTkEntry(login_frame, placeholder_text="Usuário", width=200, height=35)
+        self.username_entry.grid(row=1, column=0, pady=10, padx=20)
+
+        self.password_entry = ctk.CTkEntry(login_frame, placeholder_text="Senha", show="*", width=200, height=35)
+        self.password_entry.grid(row=2, column=0, pady=10, padx=20)
+
+        self.lembrar_var = ctk.BooleanVar(value=False)
+        self.lembrar_checkbox = ctk.CTkCheckBox(
+            login_frame, text="Lembrar usuário", variable=self.lembrar_var,
+            font=ctk.CTkFont(size=11), checkbox_width=14, checkbox_height=14, border_width=1       
+        )
+        self.lembrar_checkbox.grid(row=3, column=0, pady=(5, 10), padx=20)
+
+        self.login_button = ctk.CTkButton(
+            login_frame, text="Acessar", command=self.attempt_login, width=200, 
+            height=BTN_HEIGHT_MAIN, text_color="white",
+            fg_color=COLOR_NEUTRAL, hover_color=COLOR_NEUTRAL_HOVER
+        )
+        self.login_button.grid(row=4, column=0, pady=20, padx=20)
+        
+        self.bind('<Return>', lambda event: self.attempt_login())
+        self.carregar_usuario_salvo()
+        self.after(100, lambda: self.password_entry.focus_set() if self.username_entry.get() else self.username_entry.focus_set())
+        
+    def carregar_usuario_salvo(self):
+        if os.path.exists(CONFIG_LOGIN_FILE):
+            try:
+                with open(CONFIG_LOGIN_FILE, 'r') as f:
+                    data = json.load(f)
+                    saved_user = data.get("last_user", "")
+                    if saved_user:
+                        self.username_entry.insert(0, saved_user)
+                        self.lembrar_var.set(True)
+            except Exception: pass 
+
+    def salvar_preferencia_usuario(self, username):
+        data = {"last_user": username if self.lembrar_var.get() else ""}
+        try:
+            with open(CONFIG_LOGIN_FILE, 'w') as f: json.dump(data, f)
+        except Exception: pass
+
+    def attempt_login(self):
+        user = self.username_entry.get()
+        password = self.password_entry.get()
+        if verificar_credenciais(user, password):
+            self.salvar_preferencia_usuario(user)
+            self.withdraw()
+            main_app = App() # RENOMEADO: Chama a classe App
+            main_app.mainloop()
+            self.destroy()
+        else:
+            exibir_popup(title="Erro de Acesso", message="Usuário ou Senha inválidos.", icon="cancel")
+
+# ####################################################################
+# --- CLASSE 2: APLICAÇÃO PRINCIPAL (APP) ---
 # ####################################################################
 
 class App(ctk.CTk):
@@ -209,57 +294,69 @@ class App(ctk.CTk):
         # Carrega dados iniciais
         self.carregar_cidades_db()
 
+    def limpar_combobox_cidade(self, combobox_instance):
+        """Define o valor do combobox para 'NENHUM FILTRO' e atualiza exclusivas."""
+        combobox_instance.set("NENHUM FILTRO")
+        self.atualizar_listas_exclusivas()
+
     # --- ABA: AUTOMAÇÃO ---
     def setup_tab_automacao(self):
         tab = self.tabview.tab("Automação")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(4, weight=1) # Log expande
+        tab.rowconfigure(5, weight=1) # Log expande (row 4 mudou para 5)
 
         # Painel de Controles
         ctrl_frame = ctk.CTkFrame(tab)
         ctrl_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        ctrl_frame.columnconfigure((1, 3), weight=1)
+        # Colunas: 0 (Label), 1 (ComboBox), 2 (Botão Limpar), 3 (Label), 4 (Valor)
+        ctrl_frame.columnconfigure((1, 4), weight=1)
 
-        # Linha 1
-        ctk.CTkLabel(ctrl_frame, text="Cidade Principal:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.cidades_combobox_1 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
-        self.cidades_combobox_1.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        # Função auxiliar para criar Combo + Botão Limpar
+        def create_city_input(frame, row, label_text):
+            ctk.CTkLabel(frame, text=label_text).grid(row=row, column=0, padx=5, pady=5, sticky="e")
+            combo = ctk.CTkComboBox(frame, width=180, command=self.atualizar_listas_exclusivas)
+            combo.grid(row=row, column=1, padx=(5, 0), pady=5, sticky="ew")
+            
+            # Botão Limpar
+            btn_clear = ctk.CTkButton(
+                frame, text="X", width=25, height=25,
+                fg_color=COLOR_CLEAR, hover_color=COLOR_CLEAR_HOVER,
+                command=lambda cb=combo: self.limpar_combobox_cidade(cb)
+            )
+            btn_clear.grid(row=row, column=2, padx=(5, 10), pady=5, sticky="w")
+            
+            return combo
 
-        ctk.CTkLabel(ctrl_frame, text="Delay (s):").grid(row=0, column=2, padx=5, pady=5, sticky="e")
+        # Cidades (Linhas 0 a 4)
+        self.cidades_combobox_1 = create_city_input(ctrl_frame, 0, "Cidade Principal:")
+        self.cidades_combobox_2 = create_city_input(ctrl_frame, 1, "Cidade 2 (Opc):")
+        self.cidades_combobox_3 = create_city_input(ctrl_frame, 2, "Cidade 3 (Opc):")
+        self.cidades_combobox_4 = create_city_input(ctrl_frame, 3, "Cidade 4 (Opc):")
+        self.cidades_combobox_5 = create_city_input(ctrl_frame, 4, "Cidade 5 (Opc):")
+
+        # Controles (Colunas 3 e 4)
+
+        # Delay
+        ctk.CTkLabel(ctrl_frame, text="Delay (s):").grid(row=0, column=3, padx=5, pady=5, sticky="e")
         self.delay_combobox = ctk.CTkComboBox(ctrl_frame, values=["0.05", "0.1", "0.2", "0.5", "1.0", "1.5", "2.0"], width=80)
         self.delay_combobox.set("0.2")
-        self.delay_combobox.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
+        self.delay_combobox.grid(row=0, column=4, padx=10, pady=5, sticky="ew")
 
-        # Linha 2
-        ctk.CTkLabel(ctrl_frame, text="Cidade 2 (Opc):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        self.cidades_combobox_2 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
-        self.cidades_combobox_2.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-
-        ctk.CTkLabel(ctrl_frame, text="Status:").grid(row=1, column=2, padx=5, pady=5, sticky="e")
+        # Status
+        ctk.CTkLabel(ctrl_frame, text="Status:").grid(row=1, column=3, padx=5, pady=5, sticky="e")
         self.status_lbl = ctk.CTkLabel(ctrl_frame, textvariable=self.status_text, text_color="white", corner_radius=5, width=100)
-        self.status_lbl.grid(row=1, column=3, padx=5, pady=5, sticky="ew")
+        self.status_lbl.grid(row=1, column=4, padx=10, pady=5, sticky="ew")
         self.status_color.trace_add("write", lambda *args: self.status_lbl.configure(fg_color=self.status_color.get()))
         self.status_color.set("gray")
 
-        # Linha 3
-        ctk.CTkLabel(ctrl_frame, text="Cidade 3 (Opc):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        self.cidades_combobox_3 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
-        self.cidades_combobox_3.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-
-        ctk.CTkLabel(ctrl_frame, text="Backlog:").grid(row=2, column=2, padx=5, pady=5, sticky="e")
+        # Backlog
+        ctk.CTkLabel(ctrl_frame, text="Backlog:").grid(row=2, column=3, padx=5, pady=5, sticky="e")
         self.backlog_combobox = ctk.CTkComboBox(ctrl_frame, values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "14", "18", "26"], width=80)
         self.backlog_combobox.set("1")
-        self.backlog_combobox.grid(row=2, column=3, padx=5, pady=5, sticky="ew")
+        self.backlog_combobox.grid(row=2, column=4, padx=10, pady=5, sticky="ew")
 
-        # Linha 4
-        ctk.CTkLabel(ctrl_frame, text="Cidade 4 (Opc):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
-        self.cidades_combobox_4 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
-        self.cidades_combobox_4.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-
-        # Linha 5
-        ctk.CTkLabel(ctrl_frame, text="Cidade 5 (Opc):").grid(row=4, column=0, padx=5, pady=5, sticky="e")
-        self.cidades_combobox_5 = ctk.CTkComboBox(ctrl_frame, width=200, command=self.atualizar_listas_exclusivas)
-        self.cidades_combobox_5.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        # Linhas vazias para manter o espaçamento uniforme
+        # Removido (Não necessário com o grid unificado)
 
         # Botões de Ação
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
@@ -297,7 +394,7 @@ class App(ctk.CTk):
         # Log
         ctk.CTkLabel(tab, text="Log de Execução:", anchor="w").grid(row=3, column=0, padx=10, pady=(5, 0), sticky="nw")
         self.log_textbox = ReadOnlyTextbox(tab)
-        self.log_textbox.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.log_textbox.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="nsew") # Linha 4 na aba automação
 
     # --- ABA: CADASTRO ---
     def setup_tab_cadastro(self):
@@ -418,7 +515,6 @@ class App(ctk.CTk):
     def _unsafe_btns(self, i_state, c_state):
         # LÓGICA DO BOTÃO PARAR:
         # Se o botão Continuar estiver ativo ('normal'), significa que estamos em PAUSA.
-        # Nesse momento, transformamos o botão 'Iniciar' em 'PARAR'.
         if c_state == "normal":
             self.iniciar_btn.configure(text="PARAR", fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, 
                                        command=self.parar_automacao, state="normal")
