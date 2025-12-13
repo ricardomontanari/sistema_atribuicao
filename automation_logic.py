@@ -12,7 +12,6 @@ from PIL import Image
 # ####################################################################
 
 IMAGENS_DE_EXCECAO = [
-    "erro_devolucao.png",
     "erro_baixada.png"
 ]
 

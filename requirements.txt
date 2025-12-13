@@ -1,0 +1,9 @@
+customtkinter
+CTkMessagebox
+pandas
+openpyxl
+pyautogui
+pyperclip
+pillow
+keyboard
+pyinstaller
