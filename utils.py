@@ -3,7 +3,7 @@ import os
 import keyboard
 import time
 import pandas as pd
-import utils 
+import subprocess
 
 # ####################################################################
 # --- CONSTANTES GLOBAIS ---
@@ -11,11 +11,11 @@ import utils
 
 NOME_ARQUIVO_ALVO = 'atribuicao.xlsx' 
 DEFAULT_DELAY_SECONDS = 0.2
-VERSAO_SISTEMA = 'Beta 1.2'
+VERSAO_SISTEMA = 'Beta 1.4 (Backlog Column Fix)'
 
 # Variáveis de Estado Global
 PARAR_AUTOMACAO = False 
-CANCELAR_AUTOMACAO = False # <--- NOVA FLAG: Permite abortar a execução
+CANCELAR_AUTOMACAO = False
 INDICE_ATUAL_DO_CICLO = 0
 DELAY_ATUAL = DEFAULT_DELAY_SECONDS
 
@@ -42,105 +42,121 @@ def abrir_planilha_alvo():
         return False, f"❌ Arquivo '{NOME_ARQUIVO_ALVO}' não encontrado."
     try:
         os.startfile(NOME_ARQUIVO_ALVO)
-        return True, f"✅ Planilha '{NOME_ARQUIVO_ALVO}' aberta."
+        return True, f"✅ Planilha '{NOME_ARQUIVO_ALVO}' aberta com sucesso."
     except Exception as e:
-        return False, f"❌ Erro ao abrir arquivo: {e}"
-
-def validar_e_obter_delay(delay_input):
-    """
-    Valida e converte o delay da interface para float.
-    """
-    if not delay_input: 
-        return DEFAULT_DELAY_SECONDS
-    try:
-        val = float(str(delay_input).replace(',', '.'))
-        return val if val >= 0 else DEFAULT_DELAY_SECONDS
-    except: 
-        return DEFAULT_DELAY_SECONDS
-
-# ####################################################################
-# --- MONITORAMENTO DE TECLADO ---
-# ####################################################################
+        return False, f"❌ ERRO ao tentar abrir o arquivo: {e}"
 
 def monitorar_tecla_escape(log_textbox):
     """
-    Thread que monitora a tecla ESC para solicitar pausa.
+    Monitora a tecla ESC e define a flag PARAR_AUTOMACAO como True (PAUSA).
     """
     while True: 
         try:
             keyboard.wait('esc')
-            if not PARAR_AUTOMACAO: 
-                # Usa globals() para modificar a variável deste próprio módulo
+            # Verifica se PARAR_AUTOMACAO é False antes de setar True para evitar logs duplicados
+            if not globals()['PARAR_AUTOMACAO']: 
                 globals()['PARAR_AUTOMACAO'] = True 
-                log_textbox.insert("end", "\n[ESC] PAUSA solicitada. Aguardando fim do ciclo atual...\n")
+                log_textbox.insert("end", "\n[ESC] PAUSA solicitada. Aguardando fim do ciclo.\n")
                 log_textbox.see("end")
-            time.sleep(0.5) 
+            time.sleep(0.5)
         except Exception:
             time.sleep(1)
 
+def validar_e_obter_delay(delay_input):
+    """Lê, valida e retorna o valor do delay em segundos (float)."""
+    if not delay_input:
+        return DEFAULT_DELAY_SECONDS
+    try:
+        delay_valor = float(str(delay_input).replace(',', '.'))
+        if delay_valor < 0: raise ValueError
+        return delay_valor
+    except ValueError:
+        return DEFAULT_DELAY_SECONDS
+
 # ####################################################################
-# --- LEITURA DE DADOS ---
+# --- LEITURA E FILTRAGEM (ROBUSTA) ---
 # ####################################################################
 
 def ler_e_filtrar_dados(arquivo, cidade_filtro, backlog_filtro, log_textbox):
     """
-    Lê estritamente a aba chamada 'sheet1' (case-insensitive).
+    Lê o Excel e aplica os filtros de Cidade e Backlog de forma segura.
+    Agora verifica múltiplas variações de nome para a coluna Backlog.
     """
-    if not os.path.exists(arquivo):
-        raise FileNotFoundError(f"Arquivo '{arquivo}' não encontrado.")
-    
     try:
-        # 1. Carrega o Excel
-        xls = pd.ExcelFile(arquivo)
-        abas = xls.sheet_names
-        df = None
+        # 1. Carregar Excel
+        log_textbox.insert("end", f"Lendo arquivo '{arquivo}'...\n")
         
-        log_textbox.insert("end", f"📂 Buscando aba 'Sheet1' no arquivo...\n")
-
-        # 2. Busca Estrita por 'sheet1'
-        aba_encontrada = None
-        for aba in abas:
-            if aba.strip().lower() == "sheet1":
-                aba_encontrada = aba
-                break
+        # Lê o arquivo forçando string inicialmente para evitar erros de conversão automática
+        df = pd.read_excel(arquivo, dtype=str)
         
-        if aba_encontrada:
-            df = pd.read_excel(xls, sheet_name=aba_encontrada)
-            log_textbox.insert("end", f"✅ Aba '{aba_encontrada}' carregada com sucesso.\n")
-        else:
-            raise ValueError("Aba 'Sheet1' não encontrada. Verifique o nome da aba no Excel.")
-
-        # 3. Validação de Colunas Mínimas
-        colunas = [c.strip() for c in df.columns]
-        tem_id = any(c in colunas for c in ['Waybill No', 'Motorista ID'])
+        # CORREÇÃO CRÍTICA 1: Remove espaços dos nomes das colunas
+        df.columns = df.columns.str.strip()
         
-        if not tem_id:
-            log_textbox.insert("end", "⚠️ Aviso: Coluna de ID ('Waybill No') não encontrada na Sheet1.\n")
-
-        # 4. Filtro de Backlog
-        registros_iniciais = len(df)
-        if backlog_filtro and str(backlog_filtro).strip():
-            if 'Backlog' in df.columns:
-                try:
-                    val = int(backlog_filtro)
-                    df = df[df['Backlog'] == val]
-                except: pass 
-            else:
-                 log_textbox.insert("end", "⚠️ Coluna 'Backlog' não existe. Filtro ignorado.\n")
-
-        # 5. Filtro de Cidade
+        # 2. Filtro de Cidade
         if cidade_filtro and cidade_filtro not in ["NENHUM FILTRO", "SELECIONE", ""]:
+            # Tenta encontrar a coluna correta (Aceita 'Destination City' ou 'Cidade')
             col_cidade = 'Destination City' if 'Destination City' in df.columns else 'Cidade'
             
             if col_cidade in df.columns:
+                # Normaliza a lista de filtros (Upper e sem espaços)
                 lista_desejada = [c.strip().upper() for c in cidade_filtro.split(',') if c.strip()]
+                
+                # Normaliza a coluna do Excel e filtra
                 df = df[df[col_cidade].astype(str).str.strip().str.upper().isin(lista_desejada)]
+                
+                log_textbox.insert("end", f"ℹ️ Filtro Cidade aplicado: {len(df)} registros restantes.\n")
             else:
-                log_textbox.insert("end", f"⚠️ Coluna '{col_cidade}' não encontrada. Filtro ignorado.\n")
+                log_textbox.insert("end", f"⚠️ Coluna '{col_cidade}' não encontrada. Filtro de cidade ignorado.\n")
 
-        count = len(df)
-        msg = f"📊 Processamento: {registros_iniciais} registros -> {count} filtrados."
-        return df, count, msg
+        # 3. Filtro de Backlog (ATUALIZADO PARA MÚLTIPLOS NOMES)
+        if backlog_filtro and str(backlog_filtro).strip():
+            # Lista de possíveis nomes para a coluna Backlog
+            possiveis_nomes_backlog = ['Backlog', 'Backlog time(Station)']
+            col_backlog_encontrada = None
+            
+            # Procura qual nome existe no DataFrame
+            for nome in possiveis_nomes_backlog:
+                if nome in df.columns:
+                    col_backlog_encontrada = nome
+                    break
+            
+            if col_backlog_encontrada:
+                try:
+                    val_alvo = int(backlog_filtro)
+                    
+                    # Converte a coluna encontrada para numérico de forma segura
+                    coluna_numerica = pd.to_numeric(df[col_backlog_encontrada], errors='coerce')
+                    
+                    # Filtra comparando número com número
+                    df_filtrado = df[coluna_numerica == val_alvo]
+                    
+                    if len(df_filtrado) == 0:
+                        log_textbox.insert("end", f"⚠️ Nenhum registro encontrado com {col_backlog_encontrada} = {val_alvo}.\n")
+                        # Debug: Mostra alguns valores únicos encontrados
+                        valores_encontrados = df[col_backlog_encontrada].unique()[:5]
+                        log_textbox.insert("end", f"   (Valores na coluna '{col_backlog_encontrada}': {valores_encontrados})\n")
+                    else:
+                        log_textbox.insert("end", f"ℹ️ Filtro Backlog ({val_alvo}) aplicado na coluna '{col_backlog_encontrada}'. {len(df_filtrado)} registros encontrados.\n")
+                    
+                    df = df_filtrado
+                    
+                except Exception as e:
+                    log_textbox.insert("end", f"❌ Erro técnico ao filtrar Backlog: {e}. Filtro ignorado.\n")
+            else:
+                # Log detalhado caso nenhuma das colunas seja encontrada
+                cols = ", ".join(list(df.columns))
+                log_textbox.insert("end", f"⚠️ Coluna de Backlog não encontrada (busquei por: {possiveis_nomes_backlog}).\n   Colunas detectadas: {cols}\n")
+
+        # 4. Resultado Final
+        if df.empty:
+            log_textbox.insert("end", "⚠️ Atenção: Os filtros resultaram em 0 registros para processar.\n")
+            return pd.DataFrame(), 0, "Nenhum dado."
+
+        msg_final = f"✅ Processamento iniciado com {len(df)} registros."
+        log_textbox.insert("end", f"{msg_final}\n")
+        return df, len(df), msg_final
 
     except Exception as e:
-        raise ValueError(f"Erro ao ler Excel: {e}")
+        erro_msg = f"❌ Erro crítico ao ler arquivo: {e}"
+        log_textbox.insert("end", f"{erro_msg}\n")
+        return pd.DataFrame(), 0, erro_msg
