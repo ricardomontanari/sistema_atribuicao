@@ -38,25 +38,21 @@ def carregar_cache_imagens(log_textbox):
     count = 0
     
     for nome_img in IMAGENS_DE_EXCECAO:
-        path = None
-        # 1. Tenta no diretório local
-        if os.path.exists(nome_img): 
-            path = os.path.abspath(nome_img)
-        # 2. Tenta dentro do executável (PyInstaller)
-        else:
-            try: 
-                temp = utils.resource_path(nome_img)
-                if os.path.exists(temp): path = temp
-            except: pass
+        
+        path = utils.resource_path(nome_img)
 
-        if path and os.path.exists(path):
+        if os.path.exists(path):
             try:
                 img_obj = Image.open(path)
+                # O .load() garante que a imagem vá para a RAM e não dependa do arquivo aberto
+                img_obj.load() 
                 CACHE_IMAGENS.append((nome_img, img_obj))
                 count += 1
-            except: pass
+            except Exception as e:
+                log_textbox.insert("end", _log(f"❌ Erro ao ler imagem: {e}\n"))
         else:
-            log_textbox.insert("end", _log(f"⚠️ Aviso: Imagem '{nome_img}' não encontrada.\n"))
+            # Este log vai te dizer exatamente onde o EXE está procurando a imagem
+            log_textbox.insert("end", _log(f"⚠️ CRÍTICO: Imagem não encontrada em: {path}\n"))
     
     if count > 0:
         log_textbox.insert("end", _log(f"✅ {count} imagens carregadas com sucesso.\n"))
