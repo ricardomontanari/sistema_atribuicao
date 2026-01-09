@@ -5,92 +5,48 @@ import pyperclip
 import winsound
 import os
 import utils
-from PIL import Image
+import ctypes
+
+# --- AJUSTES DE SISTEMA (DPI & VELOCIDADE) ---
+try:
+    # Garante que o robô veja a tela na resolução real
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    # Velocidade alta, mas segura para o Windows não ignorar teclas
+    pyautogui.PAUSE = 0.02 
+except:
+    pass
 
 # ####################################################################
-# --- CONFIGURAÇÃO: IMAGENS DE ERRO ---
+# --- CONFIGURAÇÃO DE RECURSOS ---
 # ####################################################################
 
+# Caminhos ajustados para a pasta assets (compatível com seu build.py)
 IMAGENS_DE_EXCECAO = [
-    "erro_baixada.png"
+    os.path.join("assets", "erro_baixada.png"),
+    os.path.join("assets", "erro_devolucao.png")
 ]
 
-# Cache para armazenar os objetos de imagem na memória RAM
-CACHE_IMAGENS = []
+# Lista de palavras-chave para o Radar de Texto (Baseado no log 1352)
+PALAVRAS_BASE_ERRO = [
+    "1352", "ASSINATURA", "NÃO SUPORTA", "ERRO", 
+    "FALHA", "BAIXADA", "INVALID", "JA FOI", "JÁ FOI", "CANCELAR", "FECHAR"
+]
+
+CACHE_CAMINHOS = []
 CACHE_CARREGADO = False
+LISTA_DINAMICA_ERROS = []
 
 def _log(msg):
-    """Formata a mensagem de log com o horário atual."""
+    """Formata o log com timestamp."""
     return f"[{time.strftime('%H:%M:%S')}] {msg}"
 
 # ####################################################################
-# --- MÓDULO: DETECÇÃO VISUAL ---
-# ####################################################################
-
-def carregar_cache_imagens(log_textbox):
-    """
-    Carrega as imagens de erro do disco para a memória RAM.
-    """
-    global CACHE_IMAGENS, CACHE_CARREGADO
-    if CACHE_CARREGADO: return
-
-    log_textbox.insert("end", _log("Carregando banco de imagens de erro...\n"))
-    count = 0
-    
-    for nome_img in IMAGENS_DE_EXCECAO:
-        path = None
-        # 1. Tenta no diretório local
-        if os.path.exists(nome_img): 
-            path = os.path.abspath(nome_img)
-        # 2. Tenta dentro do executável (PyInstaller)
-        else:
-            try: 
-                temp = utils.resource_path(nome_img)
-                if os.path.exists(temp): path = temp
-            except: pass
-
-        if path and os.path.exists(path):
-            try:
-                img_obj = Image.open(path)
-                CACHE_IMAGENS.append((nome_img, img_obj))
-                count += 1
-            except: pass
-        else:
-            log_textbox.insert("end", _log(f"⚠️ Aviso: Imagem '{nome_img}' não encontrada.\n"))
-    
-    if count > 0:
-        log_textbox.insert("end", _log(f"✅ {count} imagens carregadas com sucesso.\n"))
-    CACHE_CARREGADO = True
-
-def verificar_erro_visual_na_tela(log_textbox):
-    """
-    Verifica instantaneamente se alguma imagem de erro está visível na tela.
-    Retorna (True, Nome da Imagem) se encontrar.
-    """
-    if not CACHE_CARREGADO: carregar_cache_imagens(log_textbox)
-
-    for nome_img, img_obj in CACHE_IMAGENS:
-        try:
-            # Tenta com confiança 0.8
-            if pyautogui.locateOnScreen(img_obj, grayscale=True, confidence=0.8):
-                return True, nome_img
-        except Exception:
-            # Fallback
-            try:
-                if pyautogui.locateOnScreen(img_obj, grayscale=True):
-                    return True, nome_img
-            except: pass
-    
-    return False, None
-
-# ####################################################################
-# --- MÓDULO: CONTROLE DE JANELAS E PAUSA ---
+# --- MÓDULO: CONTROLE DE JANELAS ---
 # ####################################################################
 
 def focar_janela_por_titulo(titulo_parcial, log_textbox):
     """
-    Tenta trazer para frente uma janela que contenha o título parcial.
-    Esta versão é silenciosa no log para evitar poluição em ações rápidas.
+    Tenta encontrar e trazer para frente uma janela específica.
     """
     try:
         janelas = pyautogui.getWindowsWithTitle(titulo_parcial)
@@ -98,279 +54,254 @@ def focar_janela_por_titulo(titulo_parcial, log_textbox):
             janela = janelas[0]
             if janela.isMinimized: janela.restore()
             janela.activate()
-            time.sleep(0.2) # Delay para renderização da janela
+            time.sleep(0.1) 
             return True
     except: pass
     return False
 
 def garantir_foco_navegador(log_textbox):
-    """Tenta focar em um dos navegadores suportados."""
-    return (focar_janela_por_titulo("Opera", log_textbox) or 
-            focar_janela_por_titulo("Google Chrome", log_textbox) or 
-            focar_janela_por_titulo("Microsoft Edge", log_textbox))
-
-def verificar_e_esperar_limpeza_de_erro(log_textbox):
     """
-    Verifica se o erro sumiu da tela antes de permitir a retomada.
+    Varre os navegadores conhecidos para garantir o foco antes de digitar.
     """
-    MAX_WAIT_TIME = 5.0
-    start_time = time.time()
-    nome_erro_persistente = "Pop-up"
-    
-    while (time.time() - start_time) < MAX_WAIT_TIME:
-        tem_erro, nome_erro = verificar_erro_visual_na_tela(log_textbox)
-        if not tem_erro:
-            log_textbox.insert("end", _log("✅ Tela limpa confirmada.\n"))
+    navegadores = ["Opera", "Google Chrome", "Microsoft Edge", "Firefox", "Brave"]
+    for nav in navegadores:
+        if focar_janela_por_titulo(nav, log_textbox):
             return True
-        
-        nome_erro_persistente = nome_erro 
-        time.sleep(0.5)
-        
-    log_textbox.insert("end", _log(f"❌ ERRO PERSISTE! A janela '{nome_erro_persistente}' ainda está na tela.\n"))
-    return False
-
-def tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle=False):
-    """
-    Bloqueia a execução enquanto o sistema está pausado.
-    Retorna:
-      (True, False) -> Retomar e Continuar
-      (True, True)  -> Retomar e Finalizar (Último ciclo)
-      (False, True) -> ABORTAR/CANCELAR AUTOMACAO
-    """
-    try: winsound.Beep(500, 500)
-    except: pass
     
-    log_textbox.insert("end", _log("⏸️ SISTEMA PAUSADO. Resolva o erro e clique em 'CONTINUAR' ou 'PARAR'.\n"))
+    # Se não achar, loga aviso mas não trava
+    log_textbox.insert("end", _log("⚠️ Aviso: Navegador não detectado. Usando janela ativa.\n"))
+    return True 
+
+# ####################################################################
+# --- MÓDULO: DETECÇÃO (RADAR) ---
+# ####################################################################
+
+def carregar_recursos_detecao(log_textbox):
+    """Carrega imagens e lista de erros apenas uma vez."""
+    global CACHE_CAMINHOS, CACHE_CARREGADO, LISTA_DINAMICA_ERROS
+    if CACHE_CARREGADO: return
+
+    # 1. Carrega Imagens
+    for caminho_relativo in IMAGENS_DE_EXCECAO:
+        path = utils.resource_path(caminho_relativo)
+        if os.path.exists(path):
+            CACHE_CAMINHOS.append(path)
+        else:
+            # Fallback: Tenta na raiz
+            path_root = utils.resource_path(os.path.basename(caminho_relativo))
+            if os.path.exists(path_root): CACHE_CAMINHOS.append(path_root)
+
+    # 2. Carrega Palavras do txt externo
+    LISTA_DINAMICA_ERROS = PALAVRAS_BASE_ERRO.copy()
+    caminho_txt = utils.get_external_path("palavras_erro.txt")
+    if os.path.exists(caminho_txt):
+        try:
+            with open(caminho_txt, 'r', encoding='utf-8') as f:
+                linhas = [l.strip().upper() for l in f.readlines() if l.strip() and not l.startswith("#")]
+                for l in linhas:
+                    if l not in LISTA_DINAMICA_ERROS: LISTA_DINAMICA_ERROS.append(l)
+        except Exception as e:
+            log_textbox.insert("end", _log(f"⚠️ Erro ao ler palavras_erro.txt: {e}\n"))
+            
+    CACHE_CARREGADO = True
+
+def verificar_presenca_erro():
+    """
+    Verifica erro via Clipboard (Rápido) e depois Visual (Lento).
+    """
+    # 1. TENTATIVA RÁPIDA: TEXTO (Clipboard)
+    try:
+        pyperclip.copy("") 
+        
+        # Sequência para capturar texto do modal
+        pyautogui.hotkey('ctrl', 'a') 
+        pyautogui.hotkey('ctrl', 'c')
+        time.sleep(0.05) 
+        
+        conteudo = str(pyperclip.paste()).upper()
+        if conteudo:
+            for palavra in LISTA_DINAMICA_ERROS:
+                if palavra in conteudo:
+                    pyautogui.press('esc') 
+                    return True, f"Texto: {palavra}"
+        
+        pyautogui.press('right') 
+    except: pass
+
+    # 2. TENTATIVA VISUAL (Fallback)
+    for caminho_img in CACHE_CAMINHOS:
+        try:
+            if pyautogui.locateOnScreen(caminho_img, grayscale=True, confidence=0.75):
+                return True, f"Imagem Detectada"
+        except: pass
+
+    return False, None
+
+# ####################################################################
+# --- MÓDULO: TRATAMENTO DE PAUSA (SEGURANÇA) ---
+# ####################################################################
+
+def lidar_com_erro_e_pausar(log_textbox, motivo, safe_update_gui_cb, safe_configure_buttons_cb):
+    """
+    Função centralizada para pausar o sistema quando algo dá errado.
+    Retorna True se o usuário pediu para Continuar.
+    Retorna False se o usuário pediu para Cancelar/Parar.
+    """
+    winsound.Beep(800, 500)
+    utils.PARAR_AUTOMACAO = True
+    
+    log_textbox.insert("end", _log(f"🛑 BLOQUEIO DETECTADO ({motivo}).\n"))
+    log_textbox.insert("end", "   -> Resolva no navegador e clique em CONTINUAR.\n")
     log_textbox.see("end")
     
-    # Sinaliza para a GUI transformar INICIAR em PARAR
+    # Atualiza GUI para estado de Pausa
+    safe_update_gui_cb(status="Pausado")
     safe_configure_buttons_cb(iniciar_state="disabled", continuar_state="normal")
     
-    # === LOOP DE BLOQUEIO ===
+    # Loop de Travamento (Espera o usuário)
     while utils.PARAR_AUTOMACAO:
-        # Se uma flag de cancelamento for ativada externamente (ex: Botão Parar)
-        if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-            # AÇÃO DE FOCO NO CANCELAMENTO (Foco é dado aqui)
-            focar_janela_por_titulo("Atribuidor", log_textbox) 
-            log_textbox.insert("end", _log("⛔ Cancelamento solicitado pelo usuário.\n"))
-            return False, True # Abortar
-
+        if getattr(utils, 'CANCELAR_AUTOMACAO', False): 
+            return False # Usuário cancelou
         time.sleep(0.5)
     
-    # --- USUÁRIO CLICOU EM CONTINUAR ---
-    
-    # Caso Especial: Erro no último ciclo -> Finaliza direto
-    if is_last_cycle:
-        log_textbox.insert("end", _log("✅ Último item processado. Finalizando automação...\n"))
-        safe_configure_buttons_cb(iniciar_state="normal", continuar_state="disabled")
-        return True, True # (Retomada OK, Deve Finalizar)
+    # Se saiu do loop sem cancelar, é porque vai continuar
+    if getattr(utils, 'CANCELAR_AUTOMACAO', False): 
+        return False
 
-    log_textbox.insert("end", _log("Verificando limpeza da tela e foco...\n"))
-
-    if not verificar_e_esperar_limpeza_de_erro(log_textbox):
-        log_textbox.insert("end", _log("⚠️ Pausando novamente. Por favor, feche o erro.\n"))
-        utils.PARAR_AUTOMACAO = True
-        return tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
-    
-    # DEVOLVE O FOCO À APLICAÇÃO ANTES DE CONTINUAR A VERIFICAÇÃO DE FOCO DE JANELA
-    # O foco é restaurado aqui (após clicar em CONTINUAR)
-    focar_janela_por_titulo("Atribuidor", log_textbox) 
-
-    if not garantir_foco_navegador(log_textbox):
-        log_textbox.insert("end", _log("❌ Foco perdido. Pausando novamente.\n"))
-        utils.PARAR_AUTOMACAO = True
-        return tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
-
-    time.sleep(0.2) 
-    tem_erro_final, nome_erro_final = verificar_erro_visual_na_tela(log_textbox)
-    
-    if tem_erro_final:
-        log_textbox.insert("end", _log(f"❌ Erro '{nome_erro_final}' reapareceu após focar. Pausando.\n"))
-        utils.PARAR_AUTOMACAO = True
-        return tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle) 
-
-    # Sucesso na retomada
-    try: winsound.Beep(1000, 300)
-    except: pass
-    
-    log_textbox.insert("end", _log("▶️ Retomando automação...\n"))
+    # Retomada
+    log_textbox.insert("end", _log("▶️ Retomando operação...\n"))
+    safe_update_gui_cb(status="Rodando")
     safe_configure_buttons_cb(iniciar_state="disabled", continuar_state="disabled")
     
-    return True, False 
-
-def acionar_pausa_sistema(log_textbox, motivo, safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=False):
-    """
-    Função wrapper que ativa a flag global de pausa e chama o tratador.
-    """
-    utils.PARAR_AUTOMACAO = True
-    safe_update_gui_cb(status="Pausado")
-    
-    log_textbox.insert("end", _log(f"🛑 {motivo}\n"))
-    log_textbox.see("end")
-    
-    # Captura o retorno (Retomada OK, Deve Finalizar/Abortar)
-    retomada_ok, deve_finalizar = tratar_pausa_e_retomar_foco(log_textbox, safe_configure_buttons_cb, is_last_cycle)
-    
-    if deve_finalizar:
-        # Se foi abortado (retomada_ok=False) ou finalizado normal (retomada_ok=True e is_last)
-        return True 
-    
-    if retomada_ok:
-        safe_update_gui_cb(status="Rodando")
-        return True
-    
-    # Se chegou aqui, algo falhou gravemente ou foi cancelado
-    return False
-
-# ####################################################################
-# --- MÓDULO: AÇÃO (INPUT) ---
-# ####################################################################
-
-def executar_acao_colar_enter(valor, delay):
-    """Executa a sequência: Copiar -> Colar (Ctrl+V) -> Enter."""
-    try:
-        pyperclip.copy(valor)
-        time.sleep(0.05)
-        pyautogui.hotkey('ctrl', 'v')
-        time.sleep(delay)
-        pyautogui.press('enter')
-        time.sleep(delay)
-        return True
-    except: return False
+    # Garante o foco antes de devolver o controle
+    garantir_foco_navegador(log_textbox)
+    return True
 
 # ####################################################################
 # --- CORE DA AUTOMAÇÃO ---
 # ####################################################################
 
 def automacao_core(log_textbox, cidade_filtro, backlog_filtro, delay_inicial, safe_configure_buttons_cb, safe_update_gui_cb):
-    sucesso = True
     try:
-        carregar_cache_imagens(log_textbox)
-
-        # 1. Leitura e Filtros
+        carregar_recursos_detecao(log_textbox)
+        utils.DELAY_ATUAL = delay_inicial
+        
+        # 1. LEITURA DE DADOS (PANDAS)
         dados, repetir, msg = utils.ler_e_filtrar_dados(utils.NOME_ARQUIVO_ALVO, cidade_filtro, backlog_filtro, log_textbox)
-        log_textbox.insert("end", _log(msg + "\n"))
+        log_textbox.insert("end", _log(f"{msg}\n"))
         
         if repetir == 0:
             safe_update_gui_cb(status="Finalizado")
             return
 
-        # 2. Preparação de Janelas
+        # 2. PREPARAÇÃO
         focar_janela_por_titulo("Excel", log_textbox)
         garantir_foco_navegador(log_textbox)
-
+        
         safe_update_gui_cb(status="Rodando", total_ciclos=repetir)
         
-        # 3. Loop Principal
+        # 3. LOOP PRINCIPAL
         for i in range(utils.INDICE_ATUAL_DO_CICLO, repetir):
-            # Verifica cancelamento global antes de começar o ciclo
-            if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-                log_textbox.insert("end", _log("⛔ Automação CANCELADA pelo usuário.\n"))
-                break
-
-            utils.INDICE_ATUAL_DO_CICLO = i
-            linha = dados.iloc[i]
-            is_last = (i == repetir - 1)
             
+            # Verifica Cancelamento Global
+            if getattr(utils, 'CANCELAR_AUTOMACAO', False): 
+                log_textbox.insert("end", _log("⛔ Operação cancelada pelo usuário.\n"))
+                break
+            
+            utils.INDICE_ATUAL_DO_CICLO = i
+            
+            # --- VALIDAÇÃO ROBUSTA DE DADOS (PANDAS) ---
             try:
-                if 'Waybill No' in dados.columns: val = str(linha['Waybill No'])
-                elif 'Motorista ID' in dados.columns: val = str(linha['Motorista ID'])
-                else: val = str(linha.iloc[0])
-            except: val = "???"
+                linha = dados.iloc[i]
+                val = ""
+                
+                # Prioridade: Waybill > Motorista ID > Coluna 0
+                if 'Waybill No' in dados.columns: 
+                    val = str(linha['Waybill No']).strip()
+                elif 'Motorista ID' in dados.columns: 
+                    val = str(linha['Motorista ID']).strip()
+                else: 
+                    val = str(linha.iloc[0]).strip()
+                
+                # Validação de Nulos/Vazios
+                if val.lower() == 'nan' or val == '' or val.lower() == 'nat':
+                    log_textbox.insert("end", _log(f"⚠️ Linha {i+1} inválida/vazia no Excel. Pulando.\n"))
+                    continue
+                    
+            except Exception as e:
+                log_textbox.insert("end", _log(f"⚠️ Erro ao ler dados da linha {i+1}: {e}\n"))
+                continue
 
-            log_textbox.insert("end", _log(f"⚙️ Ciclo {i+1}/{repetir}: {val}\n"))
+            log_textbox.insert("end", _log(f"Ciclo {i+1}/{repetir}: {val}\n"))
             log_textbox.see("end")
             safe_update_gui_cb(ciclo_atual=i+1)
 
-            # === LOOP DE BLINDAGEM (RETRY) ===
-            finalizar_automacao = False
-            
+            # --- LOOP DE TENTATIVA (RETRY) ---
             while True:
-                # Checa cancelamento dentro do loop de retry
-                if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-                    finalizar_automacao = True; break
-
-                # A) Pausa Manual (ESC)
+                # 1. Verifica Cancelamento
+                if getattr(utils, 'CANCELAR_AUTOMACAO', False): break
+                
+                # 2. Verifica Pausa Manual (ESC)
                 if utils.PARAR_AUTOMACAO:
-                    # acionar_pausa_sistema agora retorna True se deve parar (cancelar ou finalizar)
-                    deve_parar = acionar_pausa_sistema(log_textbox, "Pausa Manual", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
-                    
-                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-                        finalizar_automacao = True; break
+                    if not lidar_com_erro_e_pausar(log_textbox, "Pausa Manual [ESC]", safe_update_gui_cb, safe_configure_buttons_cb):
+                        break # Cancelou
+                    continue # Retomou, tenta colar de novo
 
-                    if deve_parar:
-                        if is_last:
-                            finalizar_automacao = True
-                            break
-                        # Se não foi cancelado e não é o último, apenas CONTINUA (Retomada)
-                        pass 
-                    else: 
-                        # Erro na retomada
-                        return
-
-                # B) Ação: Colar + Enter
-                if not executar_acao_colar_enter(val, utils.DELAY_ATUAL):
-                    deve_parar = acionar_pausa_sistema(log_textbox, "Falha no teclado", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
-                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-                        finalizar_automacao = True; break
-                    if deve_parar and is_last:
-                        finalizar_automacao = True; break
+                # 3. AÇÃO: COPIAR E COLAR
+                try:
+                    pyperclip.copy(val)
+                    pyautogui.hotkey('ctrl', 'v')
+                    time.sleep(utils.DELAY_ATUAL)
+                    pyautogui.press('enter')
+                except Exception as e:
+                    # Se falhar o teclado, pausa e pede ajuda
+                    if not lidar_com_erro_e_pausar(log_textbox, f"Erro Teclado: {e}", safe_update_gui_cb, safe_configure_buttons_cb):
+                        break
                     continue
 
-                # C) Radar de Erro (0.5 segundos)
-                inicio_radar = time.time()
+                # 4. RADAR DE PERSISTÊNCIA (2.0s - Vigília)
+                tempo_limite = time.time() + 2.0
                 tem_erro = False
-                nome_erro = None
+                motivo = None
                 
-                while (time.time() - inicio_radar) < 0.5:
-                    tem_erro, nome_erro = verificar_erro_visual_na_tela(log_textbox)
-                    if tem_erro: break 
-                    time.sleep(0.1)
+                while time.time() < tempo_limite:
+                    if utils.PARAR_AUTOMACAO: break # Pausa durante vigília
+                    
+                    tem_erro, motivo = verificar_presenca_erro()
+                    if tem_erro: break
+                    time.sleep(0.15)
 
-                # D) Tratamento se houve erro (VISUAL)
+                # 5. TRATAMENTO DO ERRO
                 if tem_erro:
-                    if is_last:
-                        log_textbox.insert("end", _log(f"🛑 Último item ({val}) com Erro: {nome_erro}. Finalizando.\n"))
-                        finalizar_automacao = True
-                        break
+                    # Chama a função centralizada de tratamento
+                    sucesso_retomada = lidar_com_erro_e_pausar(log_textbox, motivo, safe_update_gui_cb, safe_configure_buttons_cb)
                     
-                    deve_parar = acionar_pausa_sistema(log_textbox, f"Erro Visual: {nome_erro}", safe_update_gui_cb, safe_configure_buttons_cb, is_last_cycle=is_last)
-                    
-                    if getattr(utils, 'CANCELAR_AUTOMACAO', False):
-                        finalizar_automacao = True; break
-
-                    # Se retomou com sucesso de um erro visual, PULA para o próximo (conforme regra)
-                    log_textbox.insert("end", _log("⚠️ Item com erro tratado. Pulando para o próximo.\n"))
-                    break 
-
-                # Se chegou aqui, não houve erro e ação foi feita -> Sucesso do ciclo
+                    if sucesso_retomada:
+                        # SE O USUÁRIO CLICOU EM CONTINUAR APÓS UM ERRO:
+                        # Assumimos que ele resolveu/ignorou e quer ir para o PRÓXIMO.
+                        log_textbox.insert("end", _log("▶️ Erro tratado. Pulando para o próximo registro.\n"))
+                        break # Sai do 'while True', vai para o próximo 'i'
+                    else:
+                        break # Cancelou, sai do 'while True' e vai parar o loop 'for'
+                
+                # Se não houve erro, sucesso! Vai para o próximo 'i'
                 break 
-            
-            if finalizar_automacao:
-                break
 
+            # Pequeno respiro
+            time.sleep(0.05)
+
+        # FIM DO LOOP
         if not getattr(utils, 'CANCELAR_AUTOMACAO', False):
-            winsound.Beep(1000, 500)
-            log_textbox.insert("end", _log("✅ Automação Finalizada!\n"))
+            log_textbox.insert("end", _log("✅ Lista Finalizada com Sucesso.\n"))
             safe_update_gui_cb(status="Finalizado")
         else:
-            log_textbox.insert("end", _log("⛔ Automação abortada.\n"))
             safe_update_gui_cb(status="Parado")
 
     except Exception as e:
-        log_textbox.insert("end", _log(f"❌ ERRO FATAL: {e}\n"))
+        log_textbox.insert("end", _log(f"❌ ERRO CRÍTICO NO CORE: {e}\n"))
+        log_textbox.see("end")
         safe_update_gui_cb(status="Erro")
-        sucesso = False
-        
     finally:
-        # NOVO: Garante que o foco volte para o Atribuidor ao Finalizar/Abortar
-        focar_janela_por_titulo("Atribuidor", log_textbox) 
-        
-        # Reset total do estado
-        utils.CANCELAR_AUTOMACAO = False 
-        utils.PARAR_AUTOMACAO = False
-        
-        # Se terminou com sucesso ou foi cancelado, reseta o índice para 0
+        focar_janela_por_titulo("Atribuidor", log_textbox)
         utils.INDICE_ATUAL_DO_CICLO = 0
-            
         safe_configure_buttons_cb(iniciar_state="normal", continuar_state="disabled")
