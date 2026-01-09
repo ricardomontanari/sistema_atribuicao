@@ -1,4 +1,50 @@
-venv/
+# --- PYTHON ---
 __pycache__/
+*.py[cod]
+*$py.class
+
+# --- AMBIENTES VIRTUAIS ---
+venv/
+env/
+.venv/
+
+# --- BANCOS DE DADOS (CRÍTICO) ---
+# Impede que dados de clientes subam para o repositório
+*.sqlite
 *.sqlite3
+*.db
+# Específico do seu projeto (visto na pasta 1.2)
+automacao_db_*.sqlite
+
+# --- ARQUIVOS DE CONFIGURAÇÃO LOCAIS ---
+# Contêm senhas, últimos logins ou configs específicas da máquina
+config_cliente.json
+login_config.json
+palavras_erro.txt
+
+# --- DADOS E PLANILHAS ---
+# Planilhas de atribuição contêm dados reais e não devem ser versionadas
+*.xlsx
+*.xls
+*.csv
+
+# --- ARQUIVOS DE BUILD (PYINSTALLER) ---
+build/
+dist/
+*.spec
+
+# --- IDE E SISTEMA OPERACIONAL ---
 .vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# --- BACKUPS E VERSÕES ANTIGAS ---
+# Ignora pastas de backup locais para manter o repo limpo
+1.0/
+1.1/
+1.2/
+old/
+backup/
+```
